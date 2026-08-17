@@ -7,6 +7,14 @@
 <meta name="description" content="Guía complementaria en español para colegas sin experiencia en Git.">
 </head>
 <body>
+<script>
+(function(){
+  try{
+    var saved = localStorage.getItem('gu-theme');
+    if(saved === 'light' || saved === 'dark'){ document.documentElement.setAttribute('data-theme', saved); }
+  }catch(e){}
+})();
+</script>
 <style>
   :root{
     --paper-50:#E4E8E0; --paper-0:#FAFBF6;
@@ -99,6 +107,13 @@
     border-radius:7px;padding:.5rem .8rem;white-space:nowrap;
   }
   .hud-back:hover{border-color:var(--brass-500);color:var(--brass-500);}
+  .hud-actions{display:flex;align-items:center;gap:.6rem;flex:none;}
+  .theme-toggle{
+    flex:none;width:34px;height:34px;border-radius:50%;border:1px solid var(--rule);background:var(--paper-0);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:.95rem;line-height:1;
+    color:var(--ink-700);transition:all .15s;padding:0;
+  }
+  .theme-toggle:hover{border-color:var(--brass-500);color:var(--brass-500);}
 
   /* side index (desktop only) */
   #sidenav{
@@ -252,7 +267,10 @@
       </svg>
       <span class="hud-mark-text">Grade Uploader<small>guía de Git · UNED</small></span>
     </div>
-    <a class="hud-back" href="index.html">← Volver al taller</a>
+    <div class="hud-actions">
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Cambiar entre modo claro y oscuro" title="Cambiar tema">🌙</button>
+      <a class="hud-back" href="index.html">← Volver al taller</a>
+    </div>
   </div>
 </div>
 
@@ -422,6 +440,31 @@
 (function(){
   "use strict";
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var themeToggle = document.getElementById('theme-toggle');
+  function currentTheme(){
+    var attr = document.documentElement.getAttribute('data-theme');
+    if(attr === 'light' || attr === 'dark') return attr;
+    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+  function renderThemeIcon(){
+    themeToggle.textContent = currentTheme() === 'dark' ? '☀️' : '🌙';
+  }
+  renderThemeIcon();
+  themeToggle.addEventListener('click', function(){
+    var next = currentTheme() === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try{ localStorage.setItem('gu-theme', next); }catch(e){}
+    renderThemeIcon();
+  });
+  if(window.matchMedia){
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(){
+      var saved;
+      try{ saved = localStorage.getItem('gu-theme'); }catch(e){}
+      if(saved !== 'light' && saved !== 'dark') renderThemeIcon();
+    });
+  }
+
   var sections = ['cell-que-es','cell-instalar','cell-opciones','cell-comandos','cell-actualizar','cell-glosario'];
   var labels = {'cell-que-es':'Qué es Git','cell-instalar':'Instalar Git','cell-opciones':'3 opciones','cell-comandos':'Comandos','cell-actualizar':'Actualizar','cell-glosario':'Glosario'};
   var sidenav = document.getElementById('sidenav');
