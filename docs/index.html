@@ -1,0 +1,987 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grade Uploader — Taller Interactivo</title>
+<meta name="description" content="Taller interactivo y gamificado para tutores UNED sobre cómo usar grade-uploader.">
+</head>
+<body>
+<style>
+  :root{
+    --paper-50:#E4E8E0; --paper-0:#FAFBF6;
+    --ink-900:#1E2A44; --ink-700:#33405C; --ink-500:#5B667A;
+    --brass-500:#B4832A; --brass-400:#C79A45; --brass-300:#E4C989; --brass-100:#F4E9D2;
+    --green-600:#3F7D52; --green-100:#DCEEE1;
+    --red-600:#A83C32; --red-100:#F3DEDB;
+    --rule:rgba(30,42,68,0.16);
+    --shadow:0 1px 2px rgba(30,42,68,.06), 0 10px 28px -14px rgba(30,42,68,.28);
+    --term-bg:#1B2333; --term-text:#D7DCC8; --term-accent:#E8B75D; --term-dim:#8891A6;
+    --radius:10px;
+    --font-display:'Iowan Old Style','Palatino Linotype',Palatino,'Book Antiqua',Georgia,serif;
+    --font-body:'Segoe UI',ui-sans-serif,-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;
+    --font-mono:'Cascadia Code','Cascadia Mono',Consolas,ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --paper-50:#12161F; --paper-0:#1A202B;
+      --ink-900:#EDE9DD; --ink-700:#C7C2B3; --ink-500:#8F97A6;
+      --brass-500:#E0B15A; --brass-400:#C79A45; --brass-300:#6B5326; --brass-100:#2A2213;
+      --green-600:#6FBE8B; --green-100:#173226;
+      --red-600:#E08A7E; --red-100:#3A1E1B;
+      --rule:rgba(237,233,221,0.14);
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 28px -14px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper-50:#12161F; --paper-0:#1A202B;
+    --ink-900:#EDE9DD; --ink-700:#C7C2B3; --ink-500:#8F97A6;
+    --brass-500:#E0B15A; --brass-400:#C79A45; --brass-300:#6B5326; --brass-100:#2A2213;
+    --green-600:#6FBE8B; --green-100:#173226;
+    --red-600:#E08A7E; --red-100:#3A1E1B;
+    --rule:rgba(237,233,221,0.14);
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 28px -14px rgba(0,0,0,.6);
+  }
+  :root[data-theme="light"]{
+    --paper-50:#E4E8E0; --paper-0:#FAFBF6;
+    --ink-900:#1E2A44; --ink-700:#33405C; --ink-500:#5B667A;
+    --brass-500:#B4832A; --brass-400:#C79A45; --brass-300:#E4C989; --brass-100:#F4E9D2;
+    --green-600:#3F7D52; --green-100:#DCEEE1;
+    --red-600:#A83C32; --red-100:#F3DEDB;
+    --rule:rgba(30,42,68,0.16);
+    --shadow:0 1px 2px rgba(30,42,68,.06), 0 10px 28px -14px rgba(30,42,68,.28);
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      repeating-linear-gradient(180deg, transparent 0, transparent 2.15rem, var(--rule) 2.15rem, var(--rule) calc(2.15rem + 1px)),
+      var(--paper-50);
+    color:var(--ink-900);
+    font-family:var(--font-body);
+    font-size:16px;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{font-family:var(--font-display);text-wrap:balance;font-weight:600;color:var(--ink-900);margin:0;}
+  a{color:var(--brass-500);}
+  button{font-family:inherit;}
+  :focus-visible{outline:2px solid var(--brass-500);outline-offset:2px;border-radius:4px;}
+  .eyebrow{
+    font-family:var(--font-mono);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--brass-500);font-weight:600;
+  }
+  .muted{color:var(--ink-500);}
+  .wrap{max-width:760px;margin:0 auto;padding:0 1.5rem 6rem;}
+  @media (max-width:640px){.wrap{padding:0 1rem 5rem;}}
+
+  /* ---------- HUD ---------- */
+  #hud{
+    position:sticky;top:0;z-index:40;
+    background:color-mix(in srgb, var(--paper-50) 88%, transparent);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--rule);
+  }
+  .hud-inner{
+    max-width:760px;margin:0 auto;padding:.7rem 1.5rem;
+    display:flex;align-items:center;gap:1rem;
+  }
+  @media (max-width:640px){.hud-inner{padding:.6rem 1rem;gap:.6rem;}}
+  .hud-mark{font-family:var(--font-display);font-weight:600;font-size:.95rem;white-space:nowrap;flex:none;}
+  .hud-mark small{display:block;font-family:var(--font-mono);font-size:.62rem;color:var(--ink-500);letter-spacing:.04em;font-weight:400;}
+  .hud-progress{flex:1;min-width:0;}
+  .hud-progress-top{display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:.7rem;color:var(--ink-500);margin-bottom:.3rem;}
+  #hud-xp{color:var(--brass-500);font-weight:700;}
+  .hud-track{height:7px;border-radius:99px;background:var(--rule);overflow:hidden;}
+  .hud-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--brass-400),var(--brass-500));border-radius:99px;transition:width .5s cubic-bezier(.2,.8,.2,1);}
+  .hud-badges{display:flex;gap:.3rem;flex:none;}
+  .badge-chip{
+    width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:.85rem;border:1.5px solid var(--rule);background:var(--paper-0);
+    filter:grayscale(1);opacity:.35;transition:all .3s;
+  }
+  .badge-chip.on{filter:none;opacity:1;border-color:var(--brass-400);background:var(--brass-100);box-shadow:0 0 0 3px var(--brass-100);}
+  .hud-reset{
+    flex:none;font-family:var(--font-mono);font-size:.68rem;color:var(--ink-500);background:none;border:1px solid var(--rule);
+    border-radius:6px;padding:.3rem .5rem;cursor:pointer;
+  }
+  .hud-reset:hover{color:var(--red-600);border-color:var(--red-600);}
+  @media (max-width:560px){ .hud-badges,.hud-reset{display:none;} }
+
+  /* side index (desktop only) */
+  #sidenav{
+    position:fixed;right:18px;top:50%;transform:translateY(-50%);z-index:30;
+    display:flex;flex-direction:column;gap:9px;
+  }
+  @media (max-width:980px){ #sidenav{display:none;} }
+  .sidenav-dot{
+    width:10px;height:10px;border-radius:50%;border:1.5px solid var(--ink-500);background:transparent;
+    cursor:pointer;padding:0;position:relative;opacity:.55;transition:all .2s;
+  }
+  .sidenav-dot.done{background:var(--brass-500);border-color:var(--brass-500);opacity:1;}
+  .sidenav-dot.active{transform:scale(1.5);opacity:1;border-color:var(--ink-900);}
+  .sidenav-dot .tip{
+    position:absolute;right:20px;top:50%;transform:translateY(-50%);
+    background:var(--ink-900);color:var(--paper-0);font-size:.7rem;padding:.3rem .55rem;border-radius:6px;
+    white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s;font-family:var(--font-mono);
+  }
+  .sidenav-dot:hover .tip{opacity:1;}
+
+  /* ---------- Hero ---------- */
+  .hero{padding:3.2rem 0 1.5rem;}
+  .hero .eyebrow{margin-bottom:.9rem;display:block;}
+  .hero h1{font-size:2.55rem;line-height:1.08;letter-spacing:-.01em;}
+  @media (max-width:640px){.hero h1{font-size:1.9rem;}}
+  .hero p.lead{font-size:1.08rem;color:var(--ink-700);max-width:56ch;margin:1rem 0 0;}
+  .safety-note{
+    margin-top:1.4rem;display:flex;gap:.65rem;align-items:flex-start;
+    background:var(--paper-0);border:1px solid var(--rule);border-left:3px solid var(--brass-500);
+    border-radius:8px;padding:.85rem 1rem;font-size:.88rem;color:var(--ink-700);box-shadow:var(--shadow);
+  }
+  .safety-note .ic{flex:none;font-size:1.1rem;}
+
+  .flow{display:flex;align-items:center;flex-wrap:wrap;gap:.4rem;margin:2rem 0 .5rem;}
+  .flow-chip{
+    font-family:var(--font-mono);font-size:.74rem;background:var(--paper-0);border:1px solid var(--rule);
+    border-radius:7px;padding:.45rem .65rem;color:var(--ink-700);white-space:nowrap;
+  }
+  .flow-arrow{color:var(--brass-500);font-size:.85rem;}
+
+  /* ---------- Cells ---------- */
+  .cell{
+    position:relative;margin:1.8rem 0;background:var(--paper-0);border:1px solid var(--rule);
+    border-radius:var(--radius);box-shadow:var(--shadow);padding:1.4rem 1.5rem 1.5rem 3.6rem;
+  }
+  @media (max-width:640px){.cell{padding:1.2rem 1.1rem 1.3rem 3rem;}}
+  .cell-gutter{
+    position:absolute;left:0;top:0;bottom:0;width:3.6rem;display:flex;flex-direction:column;align-items:center;
+    padding-top:1.4rem;
+  }
+  @media (max-width:640px){.cell-gutter{width:3rem;}}
+  .cell-num{font-family:var(--font-mono);font-size:.68rem;color:var(--ink-500);writing-mode:vertical-rl;letter-spacing:.08em;}
+  .cell-status{
+    width:22px;height:22px;border-radius:50%;border:1.5px solid var(--rule);margin-bottom:.6rem;
+    display:flex;align-items:center;justify-content:center;font-size:.75rem;color:var(--ink-500);
+    background:var(--paper-50);flex:none;
+  }
+  .cell-status.done{background:var(--green-600);border-color:var(--green-600);color:#fff;}
+  .cell.info{padding-left:1.6rem;}
+  .cell.info .cell-gutter{display:none;}
+  .cell h2{font-size:1.3rem;margin-bottom:.15rem;}
+  .cell .eyebrow{display:block;margin-bottom:.4rem;}
+  .cell p{margin:.7rem 0;color:var(--ink-700);}
+  .cell ul{margin:.6rem 0;padding-left:1.2rem;color:var(--ink-700);}
+  .cell li{margin:.3rem 0;}
+
+  /* checklist */
+  .checklist{list-style:none;padding:0;margin:1rem 0;display:flex;flex-direction:column;gap:.55rem;}
+  .checklist li{display:flex;align-items:center;gap:.6rem;font-size:.95rem;color:var(--ink-700);}
+  .checklist input[type=checkbox]{width:17px;height:17px;accent-color:var(--brass-500);cursor:pointer;flex:none;}
+
+  /* buttons */
+  .btn{
+    display:inline-flex;align-items:center;gap:.45rem;font-size:.86rem;font-weight:600;border-radius:7px;
+    padding:.55rem 1rem;cursor:pointer;border:1px solid transparent;font-family:var(--font-mono);
+    transition:all .15s;
+  }
+  .btn-primary{background:var(--brass-500);color:#fff;}
+  .btn-primary:hover{background:var(--brass-400);}
+  .btn-primary:disabled{background:var(--rule);color:var(--ink-500);cursor:not-allowed;}
+  .btn-ghost{background:transparent;border-color:var(--rule);color:var(--ink-700);}
+  .btn-ghost:hover{border-color:var(--brass-500);color:var(--brass-500);}
+  .btn-ghost:disabled{opacity:.4;cursor:not-allowed;}
+
+  /* code / command block */
+  .cmd{
+    font-family:var(--font-mono);font-size:.82rem;background:var(--term-bg);color:var(--term-text);
+    border-radius:8px;padding:.85rem 1rem;overflow-x:auto;margin:.8rem 0;line-height:1.55;
+  }
+  .cmd .p{color:var(--term-accent);}
+  .cmd .c{color:var(--term-dim);}
+
+  .term{
+    font-family:var(--font-mono);font-size:.8rem;background:var(--term-bg);color:var(--term-text);
+    border-radius:8px;padding:.9rem 1rem;margin-top:.8rem;min-height:2.4rem;overflow-x:auto;white-space:pre-wrap;
+    line-height:1.6;
+  }
+  .term .ok{color:#8FCB9E;}
+  .term .warn{color:var(--term-accent);}
+  .term .dim{color:var(--term-dim);}
+  .term .hd{color:#fff;font-weight:700;}
+
+  /* tables */
+  .tbl-wrap{overflow-x:auto;margin:.9rem 0;border:1px solid var(--rule);border-radius:8px;}
+  table{border-collapse:collapse;width:100%;font-size:.82rem;}
+  th,td{padding:.5rem .65rem;text-align:left;border-bottom:1px solid var(--rule);white-space:nowrap;font-variant-numeric:tabular-nums;}
+  th{font-family:var(--font-mono);font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-500);background:var(--paper-50);}
+  tr:last-child td{border-bottom:none;}
+  .chip{display:inline-block;font-family:var(--font-mono);font-size:.68rem;padding:.15rem .5rem;border-radius:99px;font-weight:600;}
+  .chip-new{background:var(--brass-100);color:var(--brass-500);}
+  .chip-upd{background:var(--red-100);color:var(--red-600);}
+  .chip-same{background:var(--rule);color:var(--ink-500);}
+
+  /* cookie devtools mock */
+  .devtools{border:1px solid var(--rule);border-radius:8px;overflow:hidden;margin-top:.9rem;background:var(--paper-0);}
+  .devtools-tabs{display:flex;gap:0;background:var(--paper-50);border-bottom:1px solid var(--rule);font-family:var(--font-mono);font-size:.68rem;overflow-x:auto;}
+  .devtools-tabs span{padding:.5rem .7rem;color:var(--ink-500);white-space:nowrap;}
+  .devtools-tabs span.active{color:var(--ink-900);border-bottom:2px solid var(--brass-500);font-weight:700;}
+  .devtools-body{display:grid;grid-template-columns:150px 1fr;min-height:150px;}
+  @media (max-width:520px){.devtools-body{grid-template-columns:1fr;}}
+  .devtools-tree{border-right:1px solid var(--rule);padding:.6rem;font-family:var(--font-mono);font-size:.72rem;color:var(--ink-500);}
+  .devtools-tree .sel{color:var(--brass-500);font-weight:700;}
+  .devtools-rows{padding:.4rem;}
+  .cookie-row{
+    display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.5rem .5rem;border-radius:6px;
+    font-family:var(--font-mono);font-size:.72rem;
+  }
+  .cookie-row + .cookie-row{border-top:1px dashed var(--rule);}
+  .cookie-row .name{color:var(--ink-900);font-weight:600;}
+  .cookie-row .val{color:var(--ink-500);}
+  .cookie-row button{
+    font-family:var(--font-mono);font-size:.66rem;border:1px solid var(--rule);background:var(--paper-0);
+    color:var(--ink-700);border-radius:5px;padding:.25rem .5rem;cursor:pointer;flex:none;
+  }
+  .cookie-row button:hover{border-color:var(--brass-500);color:var(--brass-500);}
+  .cookie-row.got{background:var(--green-100);}
+  .cookie-row.got button{background:var(--green-600);color:#fff;border-color:var(--green-600);cursor:default;}
+  .env-preview{margin-top:.8rem;}
+  .env-preview .lbl{font-family:var(--font-mono);font-size:.68rem;color:var(--ink-500);margin-bottom:.3rem;}
+
+  /* quiz */
+  .quiz{border-top:1px dashed var(--rule);margin-top:1.1rem;padding-top:1.1rem;}
+  .quiz-q{font-weight:600;margin-bottom:.6rem;}
+  .quiz-opts{display:flex;flex-direction:column;gap:.45rem;margin-bottom:.7rem;}
+  .quiz-opt{display:flex;align-items:flex-start;gap:.55rem;font-size:.9rem;color:var(--ink-700);cursor:pointer;}
+  .quiz-opt input{margin-top:.25rem;accent-color:var(--brass-500);flex:none;}
+  .quiz-feedback{display:none;border-radius:7px;padding:.6rem .8rem;font-size:.85rem;margin-top:.4rem;}
+  .quiz-feedback.show{display:block;}
+  .quiz-feedback.correct{background:var(--green-100);color:var(--green-600);}
+  .quiz-feedback.wrong{background:var(--red-100);color:var(--red-600);}
+
+  /* key cards */
+  .keys{display:flex;gap:1rem;flex-wrap:wrap;margin-top:1rem;}
+  .key-card{flex:1;min-width:220px;border:1px solid var(--rule);border-radius:8px;padding:1rem;background:var(--paper-50);}
+  .key-card .ic{font-size:1.3rem;}
+  .key-card h3{font-size:.95rem;margin:.4rem 0 .3rem;}
+  .key-card p{font-size:.82rem;margin:0;color:var(--ink-500);}
+
+  /* progress bar for apply */
+  .apply-track{height:10px;border-radius:99px;background:var(--rule);overflow:hidden;margin-top:.7rem;}
+  .apply-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--green-600),#6FBE8B);border-radius:99px;transition:width .25s linear;}
+  .apply-count{font-family:var(--font-mono);font-size:.72rem;color:var(--ink-500);margin-top:.35rem;}
+
+  /* faq accordion */
+  details{border:1px solid var(--rule);border-radius:8px;padding:.7rem .9rem;margin:.6rem 0;background:var(--paper-50);}
+  summary{cursor:pointer;font-weight:600;font-size:.9rem;}
+  details p{margin:.6rem 0 0;font-size:.86rem;}
+
+  /* certificate */
+  .cert-input{
+    width:100%;font-family:var(--font-display);font-size:1rem;padding:.6rem .8rem;border-radius:7px;
+    border:1px solid var(--rule);background:var(--paper-50);color:var(--ink-900);margin:.8rem 0;
+  }
+  .cert-card{
+    margin-top:1rem;border:2px solid var(--brass-500);border-radius:10px;padding:1.8rem 1.6rem;text-align:center;
+    background:
+      radial-gradient(circle at 50% 0%, var(--brass-100), transparent 60%),
+      var(--paper-0);
+    position:relative;
+  }
+  .cert-card::before, .cert-card::after{
+    content:"";position:absolute;inset:6px;border:1px solid var(--brass-300);border-radius:6px;pointer-events:none;
+  }
+  .cert-seal{font-size:2.2rem;}
+  .cert-card h3{font-size:1.35rem;margin:.5rem 0 .1rem;}
+  .cert-card .sub{font-family:var(--font-mono);font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-500);}
+  .cert-name{font-family:var(--font-display);font-style:italic;font-size:1.6rem;margin:.9rem 0 .3rem;color:var(--brass-500);}
+  .cert-meta{font-family:var(--font-mono);font-size:.72rem;color:var(--ink-500);margin-top:.6rem;}
+  .cert-badges{display:flex;justify-content:center;gap:.4rem;margin-top:.8rem;flex-wrap:wrap;}
+  .cert-badges span{font-size:1.1rem;}
+  .cert-actions{margin-top:1.2rem;display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap;}
+
+  footer{text-align:center;color:var(--ink-500);font-size:.78rem;margin-top:3rem;font-family:var(--font-mono);}
+
+  @media (prefers-reduced-motion:reduce){
+    *{animation-duration:.001ms !important;transition-duration:.001ms !important;}
+  }
+</style>
+
+<div id="hud">
+  <div class="hud-inner">
+    <div class="hud-mark">🎓 Grade Uploader<small>taller interactivo</small></div>
+    <div class="hud-progress">
+      <div class="hud-progress-top"><span>Progreso</span><span><span id="hud-xp">0</span> / 140 XP</span></div>
+      <div class="hud-track"><div class="hud-fill" id="hud-fill"></div></div>
+    </div>
+    <div class="hud-badges" id="hud-badges"></div>
+    <button class="hud-reset" id="hud-reset" title="Reiniciar progreso">↺ Reiniciar</button>
+  </div>
+</div>
+
+<nav id="sidenav"></nav>
+
+<div class="wrap">
+
+  <section class="hero">
+    <span class="eyebrow">Taller para tutoras y tutores UNED</span>
+    <h1>De formulario en formulario a un solo comando.</h1>
+    <p class="lead">Grade Uploader lee las notas exportadas de Moodle y las sube al sistema oficial de Notas Parciales sin capturarlas una por una. Este recorrido simula, paso a paso, cómo se usa — con puntos, insignias y un certificado al final.</p>
+
+    <div class="flow" aria-hidden="true">
+      <span class="flow-chip">📥 Moodle .xlsx</span><span class="flow-arrow">→</span>
+      <span class="flow-chip">📋 plan</span><span class="flow-arrow">→</span>
+      <span class="flow-chip">🧐 revisar plan.csv</span><span class="flow-arrow">→</span>
+      <span class="flow-chip">🧪 apply --dry-run</span><span class="flow-arrow">→</span>
+      <span class="flow-chip">🚀 apply --commit</span><span class="flow-arrow">→</span>
+      <span class="flow-chip">🏛️ Notas Parciales</span>
+    </div>
+
+    <div class="safety-note">
+      <span class="ic">🔒</span>
+      <span><strong>Es una simulación educativa.</strong> No hace falta escribir contraseñas ni cookies reales en ningún campo de esta página — todas las "salidas" que verás son datos de ejemplo, iguales a los del script real.</span>
+    </div>
+  </section>
+
+  <!-- 1. PREREQS -->
+  <section class="cell" id="cell-prereqs" data-step="prereqs">
+    <div class="cell-gutter"><span class="cell-num">PASO 01</span><span class="cell-status" data-status="prereqs">○</span></div>
+    <span class="eyebrow">Antes de empezar</span>
+    <h2>Prerrequisitos</h2>
+    <p>Marcá lo que ya tenés listo:</p>
+    <ul class="checklist" id="prereqs-list">
+      <li><label><input type="checkbox" data-check="prereqs"> Windows 10 u 11</label></li>
+      <li><label><input type="checkbox" data-check="prereqs"> Python 3.10+ instalado <span class="muted">(o el <code>.exe</code> ya generado, si no querés instalar Python)</span></label></li>
+      <li><label><input type="checkbox" data-check="prereqs"> Cuenta SSO UNED con acceso a Notas Parciales</label></li>
+      <li><label><input type="checkbox" data-check="prereqs"> Conexión a internet estable</label></li>
+    </ul>
+  </section>
+
+  <!-- 2. INSTALL -->
+  <section class="cell" id="cell-install" data-step="install">
+    <div class="cell-gutter"><span class="cell-num">PASO 02</span><span class="cell-status" data-status="install">○</span></div>
+    <span class="eyebrow">Instalación</span>
+    <h2>Clonar y ejecutar el instalador</h2>
+    <div class="cmd"><span class="c"># en una terminal, dentro de la carpeta donde querés el proyecto</span><br>
+git clone https://github.com/chhdeza/grade-uploader.git<br>
+cd grade-uploader<br>
+<span class="p">instalar.bat</span></div>
+    <button class="btn btn-primary" id="run-install">▶ Ejecutar instalar.bat</button>
+    <div class="term" id="term-install" aria-live="polite"></div>
+  </section>
+
+  <!-- 3. DOUBLE KEY -->
+  <section class="cell info">
+    <span class="eyebrow">Cómo funciona la autenticación</span>
+    <h2>Dos llaves, no una</h2>
+    <p>Notas Parciales pide dos cosas apiladas — el script necesita ambas guardadas en un archivo <code>.env</code> que nunca se sube a ningún repositorio.</p>
+    <div class="keys">
+      <div class="key-card"><span class="ic">🔑</span><h3>NTLM — usuario y contraseña</h3><p>El mismo SSO que usás para el correo institucional. Sin <code>@uned.ac.cr</code>, solo el usuario.</p></div>
+      <div class="key-card"><span class="ic">🍪</span><h3>Cookies de sesión</h3><p>Un pase temporal que el navegador recibe al iniciar sesión. Expira en ~20 minutos de inactividad.</p></div>
+    </div>
+  </section>
+
+  <!-- 4. COOKIE HUNT -->
+  <section class="cell" id="cell-cookies" data-step="cookies">
+    <div class="cell-gutter"><span class="cell-num">PASO 03</span><span class="cell-status" data-status="cookies">○</span></div>
+    <span class="eyebrow">Mini-juego</span>
+    <h2>La cacería de cookies 🍪</h2>
+    <p>En el navegador real: <code>F12</code> → pestaña <em>Application</em> → <em>Storage → Cookies</em> → <code>produccion.uned.ac.cr</code>. Practicá acá copiando las 3 cookies a tu <code>.env</code> simulado.</p>
+    <div class="devtools">
+      <div class="devtools-tabs"><span>Elements</span><span>Console</span><span>Sources</span><span>Network</span><span class="active">Application</span></div>
+      <div class="devtools-body">
+        <div class="devtools-tree">Storage<br>▾ Cookies<br>&nbsp;&nbsp;<span class="sel">▸ produccion.uned…</span></div>
+        <div class="devtools-rows" id="cookie-rows">
+          <div class="cookie-row" data-cookie="sid"><span><span class="name">ASP.NET_SessionId</span><br><span class="val">a1x9k3m0…</span></span><button data-copy="sid">📋 Copiar</button></div>
+          <div class="cookie-row" data-cookie="uzmx"><span><span class="name">uzmx</span><br><span class="val">Q7Vb2Ln8…</span></span><button data-copy="uzmx">📋 Copiar</button></div>
+          <div class="cookie-row" data-cookie="uzmxj"><span><span class="name">uzmxj</span><br><span class="val">Rk4Yp1Tz…</span></span><button data-copy="uzmxj">📋 Copiar</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="env-preview">
+      <div class="lbl">.env</div>
+      <div class="term" id="env-out">NP_NTLM_USER=jperez
+NP_NTLM_PASSWORD=••••••••
+NP_COOKIE_ASPNET_SESSIONID=<span class="dim">&lt;pendiente&gt;</span>
+NP_COOKIE_UZMX=<span class="dim">&lt;pendiente&gt;</span>
+NP_COOKIE_UZMXJ=<span class="dim">&lt;pendiente&gt;</span></div>
+    </div>
+    <p class="muted" style="font-size:.82rem;">⏱️ Truco real: recargá (F5) la página de Notas Parciales justo antes de copiar cookies frescas — duran más si la pestaña sigue abierta.</p>
+  </section>
+
+  <!-- 5. PROBE -->
+  <section class="cell" id="cell-probe" data-step="probe">
+    <div class="cell-gutter"><span class="cell-num">PASO 04</span><span class="cell-status" data-status="probe">○</span></div>
+    <span class="eyebrow">Siempre primero</span>
+    <h2>Modo <code>probe</code> — verificar antes de tocar nada</h2>
+    <p>Confirma que las credenciales funcionan y muestra los instrumentos de evaluación del grupo. No escribe nada.</p>
+    <div class="cmd">python notasparciales_upload.py <span class="p">probe</span> --ano 2026 --pac 3 --escuela 03 --catedra 253 --asignatura 00883 --cu 42 --grupo 1 --modelo 4</div>
+    <button class="btn btn-primary" id="run-probe">▶ Ejecutar probe</button>
+    <div class="term" id="term-probe" aria-live="polite"></div>
+  </section>
+
+  <!-- 6. XLSX FORMAT + QUIZZES -->
+  <section class="cell" id="cell-xlsx">
+    <div class="cell-gutter"><span class="cell-num">PASO 05</span><span class="cell-status" data-status="quiz1quiz2">○</span></div>
+    <span class="eyebrow">Datos de entrada</span>
+    <h2>El xlsx exportado de Moodle</h2>
+    <p>Calificaciones → Exportar → Hoja de cálculo Excel. El script detecta solo las columnas que terminan en <code>(Real)</code>.</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Nombre</th><th>Apellido(s)</th><th>Número de ID</th><th>Institución</th><th>Tarea 1 (Real)</th></tr></thead>
+        <tbody>
+          <tr><td>María</td><td>Pérez Solano</td><td>0117540192</td><td>SAN JOSE (01)</td><td>89</td></tr>
+          <tr><td>Juan</td><td>Rodríguez Li</td><td>0304560789</td><td>DESAMPARADOS (42)</td><td>75</td></tr>
+          <tr><td>Ana</td><td>Mora Castro</td><td>0501230456</td><td>SAN JOSE (01)</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="quiz" data-quiz="quiz1">
+      <div class="quiz-q">🧩 Pregunta 1 — En la fila de Ana, la nota es un guion ( — ). ¿Qué hace el script con eso?</div>
+      <div class="quiz-opts">
+        <label class="quiz-opt"><input type="radio" name="q1" value="wrong"> La deja en blanco y sigue.</label>
+        <label class="quiz-opt"><input type="radio" name="q1" value="right"> La marca como "no presentó" (código 998).</label>
+        <label class="quiz-opt"><input type="radio" name="q1" value="wrong2"> La convierte automáticamente en 0.</label>
+      </div>
+      <button class="btn btn-ghost" data-check-quiz="quiz1">Comprobar</button>
+      <div class="quiz-feedback correct" data-fb="quiz1-right">✅ Correcto — el guion se traduce al código 998 ("no presentó") en Notas Parciales.</div>
+      <div class="quiz-feedback wrong" data-fb="quiz1-wrong">❌ No — un guion nunca se convierte en 0 ni se ignora: es el código 998, "no presentó".</div>
+    </div>
+
+    <div class="quiz" data-quiz="quiz2">
+      <div class="quiz-q">🧩 Pregunta 2 — Moodle califica de 0 a 100. Notas Parciales usa 0 a 10. ¿Qué hace el modo <code>plan</code>?</div>
+      <div class="quiz-opts">
+        <label class="quiz-opt"><input type="radio" name="q2" value="wrong"> Nada — hay que convertir las notas a mano antes.</label>
+        <label class="quiz-opt"><input type="radio" name="q2" value="right"> Divide entre 10 automáticamente (89 → 8.9).</label>
+        <label class="quiz-opt"><input type="radio" name="q2" value="wrong2"> Redondea cada nota al entero más cercano.</label>
+      </div>
+      <button class="btn btn-ghost" data-check-quiz="quiz2">Comprobar</button>
+      <div class="quiz-feedback correct" data-fb="quiz2-right">✅ Correcto — la conversión 0–100 → 0–10 es automática en el modo <code>plan</code> (no en el modo <code>csv</code>, ojo).</div>
+      <div class="quiz-feedback wrong" data-fb="quiz2-wrong">❌ No — el modo <code>plan</code> convierte solo, dividiendo entre 10.</div>
+    </div>
+  </section>
+
+  <!-- 7. PLAN -->
+  <section class="cell" id="cell-plan" data-step="plan">
+    <div class="cell-gutter"><span class="cell-num">PASO 06</span><span class="cell-status" data-status="plan">○</span></div>
+    <span class="eyebrow">El paso auditable</span>
+    <h2>Modo <code>plan</code> — generar el plan antes de subir nada</h2>
+    <p>Lee el xlsx, compara contra lo que ya existe en el servidor, y escribe un <code>plan.csv</code> revisable en Excel.</p>
+    <div class="cmd">python notasparciales_upload.py <span class="p">plan</span> --xlsx calificaciones_moodle.xlsx --cu-grupo 42=1 --cu-grupo 01=2</div>
+    <button class="btn btn-primary" id="run-plan">▶ Generar plan.csv</button>
+    <div id="plan-out"></div>
+  </section>
+
+  <!-- 8. QUIZ dry-run -->
+  <section class="cell" id="cell-quiz3" data-step="quiz3">
+    <div class="cell-gutter"><span class="cell-num">PASO 07</span><span class="cell-status" data-status="quiz3">○</span></div>
+    <span class="eyebrow">La red de seguridad</span>
+    <h2>Antes de aplicar de verdad</h2>
+    <div class="quiz" data-quiz="quiz3" style="border-top:none;margin-top:0;padding-top:0;">
+      <div class="quiz-q">🧩 ¿Qué pasa si corrés <code>apply --dry-run</code>?</div>
+      <div class="quiz-opts">
+        <label class="quiz-opt"><input type="radio" name="q3" value="wrong"> Sube las notas de una vez, sin avisar.</label>
+        <label class="quiz-opt"><input type="radio" name="q3" value="right"> Simula todo el proceso — nada se escribe en el servidor.</label>
+        <label class="quiz-opt"><input type="radio" name="q3" value="wrong2"> Borra el plan.csv generado.</label>
+      </div>
+      <button class="btn btn-ghost" data-check-quiz="quiz3">Comprobar</button>
+      <div class="quiz-feedback correct" data-fb="quiz3-right">✅ Correcto — <code>--dry-run</code> es el ensayo. Solo <code>--commit</code> escribe en Notas Parciales.</div>
+      <div class="quiz-feedback wrong" data-fb="quiz3-wrong">❌ No — nada se escribe hasta que uses <code>--commit</code>. <code>--dry-run</code> es puro ensayo.</div>
+    </div>
+  </section>
+
+  <!-- 9. APPLY -->
+  <section class="cell" id="cell-apply" data-step="apply">
+    <div class="cell-gutter"><span class="cell-num">PASO 08</span><span class="cell-status" data-status="apply">○</span></div>
+    <span class="eyebrow">El final</span>
+    <h2>Modo <code>apply</code> — ensayo y luego commit</h2>
+    <div class="cmd">python notasparciales_upload.py <span class="p">apply</span> --plan notas_plan.csv <span class="p">--dry-run</span></div>
+    <button class="btn btn-primary" id="run-dryrun">▶ Ejecutar --dry-run</button>
+    <div class="term" id="term-dryrun" aria-live="polite"></div>
+
+    <div id="commit-block" style="display:none;">
+      <div class="cmd" style="margin-top:1.1rem;">python notasparciales_upload.py <span class="p">apply</span> --plan notas_plan.csv <span class="p">--commit</span></div>
+      <button class="btn btn-primary" id="run-commit">🚀 Ejecutar --commit</button>
+      <div class="apply-track" id="apply-track" style="display:none;"><div class="apply-fill" id="apply-fill"></div></div>
+      <div class="apply-count" id="apply-count"></div>
+      <div class="term" id="term-commit" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <!-- 10. FAQ -->
+  <section class="cell info">
+    <span class="eyebrow">Referencia rápida</span>
+    <h2>Cuando algo falla</h2>
+    <details>
+      <summary>El script dice "respuesta no-JSON" o "probable expiración de cookies"</summary>
+      <p>Volvé al navegador, presioná <code>F5</code> en la pestaña de Notas Parciales, y copiá las 3 cookies de nuevo — duran ~20 minutos de inactividad.</p>
+    </details>
+    <details>
+      <summary>¿Puedo cargar notas de varios centros universitarios a la vez?</summary>
+      <p>Sí — usá varios <code>--cu-grupo CU=GRUPO</code> en el mismo comando <code>plan</code>, uno por cada centro presente en el xlsx.</p>
+    </details>
+    <details>
+      <summary>¿El modo <code>csv</code> también convierte la escala 0–100 a 0–10?</summary>
+      <p>No. El modo <code>csv</code> espera las notas ya en escala 0–10. Solo el modo <code>plan</code> hace la conversión automática desde un xlsx de Moodle.</p>
+    </details>
+  </section>
+
+  <!-- 11. CERTIFICATE -->
+  <section class="cell info" id="cell-cert">
+    <span class="eyebrow">Cierre</span>
+    <h2>Tu certificado</h2>
+    <p>Escribí tu nombre para generar tu certificado del taller (se actualiza con tu XP e insignias actuales).</p>
+    <input type="text" class="cert-input" id="cert-name" placeholder="Tu nombre">
+    <div class="cert-card">
+      <div class="cert-seal">🎓</div>
+      <h3>Certificado de Finalización</h3>
+      <div class="sub">Grade Uploader — Taller Interactivo para Tutores UNED</div>
+      <div class="cert-name" id="cert-name-out">Tutor / Tutora UNED</div>
+      <div class="cert-badges" id="cert-badges"></div>
+      <div class="cert-meta" id="cert-meta">0 / 140 XP obtenidos · <span id="cert-date"></span></div>
+    </div>
+    <div class="cert-actions">
+      <button class="btn btn-primary" id="cert-download">📥 Descargar como imagen</button>
+    </div>
+  </section>
+
+  <footer>
+    Basado en <a href="https://github.com/chhdeza/grade-uploader" target="_blank" rel="noopener">chhdeza/grade-uploader</a> · taller de simulación, sin conexión al sistema real.
+  </footer>
+</div>
+
+<canvas id="cert-canvas" width="900" height="620" style="display:none;"></canvas>
+
+<script>
+(function(){
+  "use strict";
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var STEP_DEFS = [
+    {id:'prereqs', xp:10, badge:null, target:'cell-prereqs', label:'Prerrequisitos'},
+    {id:'install', xp:15, badge:{id:'installer',icon:'⚙️',name:'Instalador'}, target:'cell-install', label:'Instalación'},
+    {id:'cookies', xp:25, badge:{id:'cookiehunter',icon:'🍪',name:'Cazador de Cookies'}, target:'cell-cookies', label:'Cookies'},
+    {id:'probe', xp:15, badge:{id:'verified',icon:'🔑',name:'Verificado'}, target:'cell-probe', label:'Probe'},
+    {id:'quiz1', xp:10, badge:null, target:'cell-xlsx', label:'Formato xlsx'},
+    {id:'quiz2', xp:10, badge:{id:'translator',icon:'📊',name:'Traductor de Moodle'}, target:'cell-xlsx', label:'Escalas'},
+    {id:'plan', xp:20, badge:{id:'planner',icon:'📋',name:'Planificador'}, target:'cell-plan', label:'Plan'},
+    {id:'quiz3', xp:10, badge:{id:'safety',icon:'🛟',name:'Piloto Seguro'}, target:'cell-quiz3', label:'Dry-run'},
+    {id:'apply', xp:25, badge:{id:'graduate',icon:'🎓',name:'Notas Cargadas'}, target:'cell-apply', label:'Apply'}
+  ];
+  var TOTAL_XP = STEP_DEFS.reduce(function(a,s){return a+s.xp;},0);
+  var STORE_KEY = 'gradeUploaderTutorialState_v1';
+
+  var state = {done:{}, cookies:{}};
+  try{
+    var saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+    if(saved) state = saved;
+  }catch(e){}
+
+  function save(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){} }
+
+  function xpEarned(){
+    return STEP_DEFS.reduce(function(a,s){ return a + (state.done[s.id] ? s.xp : 0); }, 0);
+  }
+  function badgesEarned(){
+    return STEP_DEFS.filter(function(s){ return s.badge && state.done[s.id]; }).map(function(s){return s.badge;});
+  }
+
+  function markDone(id){
+    if(state.done[id]) return;
+    state.done[id] = true;
+    save();
+    renderHUD();
+    renderStatuses();
+    renderCert();
+  }
+
+  /* ---------- HUD ---------- */
+  var hudFill = document.getElementById('hud-fill');
+  var hudXp = document.getElementById('hud-xp');
+  var hudBadges = document.getElementById('hud-badges');
+  var ALL_BADGES = STEP_DEFS.filter(function(s){return s.badge;}).map(function(s){return s.badge;});
+
+  function renderHUD(){
+    var xp = xpEarned();
+    hudXp.textContent = xp;
+    hudFill.style.width = Math.round(xp/TOTAL_XP*100) + '%';
+    hudBadges.innerHTML = '';
+    var earnedIds = badgesEarned().map(function(b){return b.id;});
+    ALL_BADGES.forEach(function(b){
+      var span = document.createElement('span');
+      span.className = 'badge-chip' + (earnedIds.indexOf(b.id) > -1 ? ' on' : '');
+      span.textContent = b.icon;
+      span.title = b.name;
+      hudBadges.appendChild(span);
+    });
+  }
+
+  function renderStatuses(){
+    document.querySelectorAll('[data-status]').forEach(function(el){
+      var key = el.getAttribute('data-status');
+      var doneFlag;
+      if(key === 'quiz1quiz2'){ doneFlag = state.done.quiz1 && state.done.quiz2; }
+      else { doneFlag = !!state.done[key]; }
+      el.textContent = doneFlag ? '✓' : '○';
+      el.classList.toggle('done', !!doneFlag);
+    });
+  }
+
+  /* ---------- side nav ---------- */
+  var sidenav = document.getElementById('sidenav');
+  var seenTargets = {};
+  STEP_DEFS.forEach(function(s){
+    if(seenTargets[s.target]) return;
+    seenTargets[s.target] = true;
+    var btn = document.createElement('button');
+    btn.className = 'sidenav-dot';
+    btn.setAttribute('data-target', s.target);
+    var tip = document.createElement('span');
+    tip.className = 'tip';
+    tip.textContent = s.label;
+    btn.appendChild(tip);
+    btn.addEventListener('click', function(){
+      var el = document.getElementById(s.target);
+      if(el) el.scrollIntoView({behavior: reduceMotion ? 'auto' : 'smooth', block:'center'});
+    });
+    sidenav.appendChild(btn);
+  });
+  function renderSidenavDone(){
+    sidenav.querySelectorAll('.sidenav-dot').forEach(function(dot){
+      var target = dot.getAttribute('data-target');
+      var relatedSteps = STEP_DEFS.filter(function(s){return s.target===target;});
+      var allDone = relatedSteps.every(function(s){return state.done[s.id];});
+      dot.classList.toggle('done', allDone);
+    });
+  }
+  if('IntersectionObserver' in window){
+    var targets = Object.keys(seenTargets);
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        if(entry.isIntersecting){
+          sidenav.querySelectorAll('.sidenav-dot').forEach(function(d){
+            d.classList.toggle('active', d.getAttribute('data-target') === entry.target.id);
+          });
+        }
+      });
+    }, {rootMargin:'-40% 0px -50% 0px'});
+    targets.forEach(function(id){ var el = document.getElementById(id); if(el) io.observe(el); });
+  }
+
+  /* ---------- typewriter ---------- */
+  function typeLines(container, lines, done){
+    container.innerHTML = '';
+    if(reduceMotion){
+      container.innerHTML = lines.join('\n');
+      if(done) done();
+      return;
+    }
+    var i = 0;
+    function next(){
+      if(i >= lines.length){ if(done) done(); return; }
+      var div = document.createElement('div');
+      div.innerHTML = lines[i];
+      container.appendChild(div);
+      i++;
+      setTimeout(next, 90 + Math.random()*90);
+    }
+    next();
+  }
+
+  /* ---------- PREREQS ---------- */
+  var prereqBoxes = document.querySelectorAll('[data-check="prereqs"]');
+  prereqBoxes.forEach(function(cb){
+    cb.checked = !!state.done.prereqs && true;
+  });
+  function checkPrereqs(){
+    var all = Array.prototype.every.call(prereqBoxes, function(cb){ return cb.checked; });
+    if(all) markDone('prereqs');
+  }
+  prereqBoxes.forEach(function(cb){ cb.addEventListener('change', checkPrereqs); });
+  if(state.done.prereqs){ prereqBoxes.forEach(function(cb){cb.checked = true;}); }
+
+  /* ---------- INSTALL ---------- */
+  document.getElementById('run-install').addEventListener('click', function(){
+    var btn = this;
+    btn.disabled = true;
+    var term = document.getElementById('term-install');
+    typeLines(term, [
+      '<span class="hd">== instalar.bat ==</span>',
+      '[1/4] Verificando Python... <span class="ok">OK (3.11.4)</span>',
+      '[2/4] Creando entorno virtual (.venv)... <span class="ok">OK</span>',
+      '[3/4] Instalando dependencias (requests, openpyxl, python-dotenv)... <span class="ok">OK</span>',
+      '[4/4] Creando .env desde plantilla... <span class="ok">OK</span>',
+      '',
+      '<span class="ok">✅ Instalación completa.</span> Editá .env con tus credenciales.'
+    ], function(){ markDone('install'); btn.textContent = '✓ Instalado'; });
+  });
+
+  /* ---------- COOKIES ---------- */
+  var cookieMeta = {
+    sid: {label:'ASP.NET_SessionId', varName:'NP_COOKIE_ASPNET_SESSIONID', value:'a1x9k3m0f7q2z…'},
+    uzmx: {label:'uzmx', varName:'NP_COOKIE_UZMX', value:'Q7Vb2Ln8Kd91…'},
+    uzmxj: {label:'uzmxj', varName:'NP_COOKIE_UZMXJ', value:'Rk4Yp1Tz6Bs0…'}
+  };
+  function renderEnv(){
+    var lines = [
+      'NP_NTLM_USER=jperez',
+      'NP_NTLM_PASSWORD=••••••••'
+    ];
+    ['sid','uzmx','uzmxj'].forEach(function(k){
+      var m = cookieMeta[k];
+      lines.push(m.varName + '=' + (state.cookies[k] ? m.value : '<span class="dim">&lt;pendiente&gt;</span>'));
+    });
+    document.getElementById('env-out').innerHTML = lines.join('\n');
+  }
+  document.querySelectorAll('[data-copy]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var key = btn.getAttribute('data-copy');
+      state.cookies[key] = true;
+      var row = btn.closest('.cookie-row');
+      row.classList.add('got');
+      btn.textContent = '✓ Copiada';
+      renderEnv();
+      save();
+      if(state.cookies.sid && state.cookies.uzmx && state.cookies.uzmxj){
+        markDone('cookies');
+      }
+    });
+  });
+  ['sid','uzmx','uzmxj'].forEach(function(k){
+    if(state.cookies[k]){
+      var row = document.querySelector('.cookie-row[data-cookie="'+k+'"]');
+      if(row){ row.classList.add('got'); row.querySelector('button').textContent = '✓ Copiada'; }
+    }
+  });
+  renderEnv();
+
+  /* ---------- PROBE ---------- */
+  document.getElementById('run-probe').addEventListener('click', function(){
+    var btn = this;
+    btn.disabled = true;
+    var term = document.getElementById('term-probe');
+    typeLines(term, [
+      '<span class="hd">== Probando autenticación ==</span>',
+      '<span class="ok">OK: cookies válidas, el sistema está abierto.</span>',
+      '',
+      '<span class="hd">== Nota mínima para 00883 ==</span>',
+      'Nota mínima de aprobación: 7',
+      '',
+      '<span class="hd">== Instrumentos del modelo ==</span>',
+      '  Tar1   ->  Tarea 1 (2)',
+      '  Tar2   ->  Tarea 2 (2)',
+      '  Tar3   ->  Tarea 3 (2)',
+      '  Proy1  ->  Proyecto 1 (4)',
+      '',
+      '<span class="hd">== Grupo ==</span>',
+      'Estudiantes en el grupo: <span class="warn">25</span>'
+    ], function(){ markDone('probe'); btn.textContent = '✓ Verificado'; });
+  });
+
+  /* ---------- QUIZZES ---------- */
+  document.querySelectorAll('[data-check-quiz]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var quizId = btn.getAttribute('data-check-quiz');
+      var wrap = btn.closest('.quiz');
+      var selected = wrap.querySelector('input[type=radio]:checked');
+      wrap.querySelectorAll('.quiz-feedback').forEach(function(f){ f.classList.remove('show'); });
+      if(!selected){ return; }
+      var isRight = selected.value === 'right';
+      var fb = wrap.querySelector('[data-fb="'+quizId+'-'+(isRight?'right':'wrong')+'"]');
+      if(fb) fb.classList.add('show');
+      if(isRight) markDone(quizId);
+    });
+  });
+
+  /* ---------- PLAN ---------- */
+  document.getElementById('run-plan').addEventListener('click', function(){
+    var btn = this;
+    btn.disabled = true;
+    var out = document.getElementById('plan-out');
+    var rows = [
+      ['0117540192','María Pérez','Tar1','8.9','—','<span class="chip chip-new">Nueva</span>'],
+      ['0117540192','María Pérez','Proy1','9.5','—','<span class="chip chip-new">Nueva</span>'],
+      ['0304560789','Juan Rodríguez','Tar1','7.5','7.0','<span class="chip chip-upd">Actualizar</span>'],
+      ['0501230456','Ana Mora','Tar1','998','998','<span class="chip chip-same">Sin cambio</span>']
+    ];
+    out.innerHTML = '<div class="term">Leyendo calificaciones_moodle.xlsx… <span class="ok">25 estudiantes</span>\nComparando contra el servidor… <span class="ok">listo</span>\nEscribiendo <span class="warn">notas_plan.csv</span> (4 de 25 filas mostradas)</div>';
+    setTimeout(function(){
+      var tbl = document.createElement('div');
+      tbl.className = 'tbl-wrap';
+      tbl.style.marginTop = '.6rem';
+      tbl.innerHTML = '<table><thead><tr><th>Cédula</th><th>Estudiante</th><th>Instrumento</th><th>Nota Moodle</th><th>Nota actual</th><th>Acción</th></tr></thead><tbody>' +
+        rows.map(function(r){ return '<tr><td>'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+'</td><td>'+r[3]+'</td><td>'+r[4]+'</td><td>'+r[5]+'</td></tr>'; }).join('') +
+        '</tbody></table>';
+      out.appendChild(tbl);
+      var caption = document.createElement('p');
+      caption.className = 'muted';
+      caption.style.fontSize = '.82rem';
+      caption.textContent = '👉 revisá notas_plan.csv en Excel antes de aplicar nada.';
+      out.appendChild(caption);
+      markDone('plan');
+      btn.textContent = '✓ Plan generado';
+    }, reduceMotion ? 0 : 550);
+  });
+
+  /* ---------- APPLY ---------- */
+  document.getElementById('run-dryrun').addEventListener('click', function(){
+    var btn = this;
+    btn.disabled = true;
+    var term = document.getElementById('term-dryrun');
+    typeLines(term, [
+      '<span class="hd">🧪 DRY-RUN</span>',
+      '25 operaciones simuladas · <span class="ok">0 errores</span>',
+      '<span class="dim">Nada fue escrito en el servidor.</span>'
+    ], function(){
+      document.getElementById('commit-block').style.display = 'block';
+    });
+  });
+
+  document.getElementById('run-commit').addEventListener('click', function(){
+    var btn = this;
+    btn.disabled = true;
+    var track = document.getElementById('apply-track');
+    var fill = document.getElementById('apply-fill');
+    var count = document.getElementById('apply-count');
+    var termCommit = document.getElementById('term-commit');
+    track.style.display = 'block';
+    var total = 25, n = 0;
+    function tick(){
+      n++;
+      var pct = Math.round(n/total*100);
+      fill.style.width = pct + '%';
+      count.textContent = 'Subiendo nota ' + n + ' / ' + total + '…';
+      if(n < total){
+        setTimeout(tick, reduceMotion ? 0 : 45);
+      } else {
+        count.textContent = '';
+        typeLines(termCommit, [
+          '<span class="ok">✅ 25/25 notas subidas correctamente.</span>',
+          'Resultados guardados en <span class="warn">notas_plan_resultados.csv</span>'
+        ], function(){
+          markDone('apply');
+          btn.textContent = '✓ Notas cargadas';
+          burstConfetti();
+        });
+      }
+    }
+    tick();
+  });
+
+  function burstConfetti(){
+    if(reduceMotion) return;
+    var canvas = document.createElement('canvas');
+    canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+    canvas.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:999;';
+    document.body.appendChild(canvas);
+    var ctx = canvas.getContext('2d');
+    var colors = ['#B4832A','#3F7D52','#1E2A44','#E4C989'];
+    var pieces = [];
+    for(var i=0;i<80;i++){
+      pieces.push({
+        x: Math.random()*canvas.width, y: -20 - Math.random()*200,
+        vx: (Math.random()-0.5)*2, vy: 2+Math.random()*3,
+        size: 4+Math.random()*4, color: colors[i%colors.length], rot: Math.random()*360, vr:(Math.random()-0.5)*10
+      });
+    }
+    var frames = 0;
+    function draw(){
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      pieces.forEach(function(p){
+        p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+        ctx.save();
+        ctx.translate(p.x,p.y); ctx.rotate(p.rot*Math.PI/180);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size/2,-p.size/2,p.size,p.size);
+        ctx.restore();
+      });
+      frames++;
+      if(frames < 110){ requestAnimationFrame(draw); }
+      else { canvas.remove(); }
+    }
+    draw();
+  }
+
+  /* ---------- CERTIFICATE ---------- */
+  var certNameInput = document.getElementById('cert-name');
+  function renderCert(){
+    var name = certNameInput.value.trim() || 'Tutor / Tutora UNED';
+    document.getElementById('cert-name-out').textContent = name;
+    var xp = xpEarned();
+    document.getElementById('cert-meta').innerHTML = xp + ' / ' + TOTAL_XP + ' XP obtenidos · <span id="cert-date">' + todayStr() + '</span>';
+    var badgesWrap = document.getElementById('cert-badges');
+    badgesWrap.innerHTML = '';
+    badgesEarned().forEach(function(b){
+      var span = document.createElement('span');
+      span.textContent = b.icon;
+      span.title = b.name;
+      badgesWrap.appendChild(span);
+    });
+  }
+  function todayStr(){
+    var d = new Date();
+    return d.toLocaleDateString('es-CR', {year:'numeric', month:'long', day:'numeric'});
+  }
+  certNameInput.addEventListener('input', renderCert);
+
+  document.getElementById('cert-download').addEventListener('click', function(){
+    var canvas = document.getElementById('cert-canvas');
+    var ctx = canvas.getContext('2d');
+    var w = canvas.width, h = canvas.height;
+    ctx.clearRect(0,0,w,h);
+    ctx.fillStyle = '#FAFBF6';
+    ctx.fillRect(0,0,w,h);
+    ctx.strokeStyle = '#B4832A'; ctx.lineWidth = 6;
+    ctx.strokeRect(18,18,w-36,h-36);
+    ctx.strokeStyle = '#E4C989'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(34,34,w-68,h-68);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#1E2A44';
+    ctx.font = '64px Georgia, serif';
+    ctx.fillText('🎓', w/2, 150);
+    ctx.font = '600 40px Georgia, serif';
+    ctx.fillText('Certificado de Finalización', w/2, 220);
+    ctx.font = '13px Consolas, monospace';
+    ctx.fillStyle = '#5B667A';
+    ctx.fillText('GRADE UPLOADER — TALLER INTERACTIVO PARA TUTORES UNED', w/2, 250);
+    ctx.font = 'italic 44px Georgia, serif';
+    ctx.fillStyle = '#B4832A';
+    var name = certNameInput.value.trim() || 'Tutor / Tutora UNED';
+    ctx.fillText(name, w/2, 340);
+    var xp = xpEarned();
+    ctx.font = '15px Consolas, monospace';
+    ctx.fillStyle = '#5B667A';
+    ctx.fillText(xp + ' / ' + TOTAL_XP + ' XP obtenidos · ' + todayStr(), w/2, 400);
+    var badges = badgesEarned();
+    ctx.font = '30px sans-serif';
+    var startX = w/2 - (badges.length*40)/2 + 20;
+    badges.forEach(function(b,i){
+      ctx.fillText(b.icon, startX + i*40, 460);
+    });
+    ctx.font = '12px Consolas, monospace';
+    ctx.fillStyle = '#8F97A6';
+    ctx.fillText('github.com/chhdeza/grade-uploader', w/2, h-50);
+
+    var link = document.createElement('a');
+    link.download = 'certificado-grade-uploader.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  });
+
+  /* ---------- HUD RESET ---------- */
+  document.getElementById('hud-reset').addEventListener('click', function(){
+    if(!confirm('¿Reiniciar todo el progreso del taller?')) return;
+    localStorage.removeItem(STORE_KEY);
+    location.reload();
+  });
+
+  /* ---------- initial render ---------- */
+  renderHUD();
+  renderStatuses();
+  renderSidenavDone();
+  renderCert();
+})();
+</script>
+</body>
+</html>
