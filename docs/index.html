@@ -7,6 +7,14 @@
 <meta name="description" content="Taller interactivo y gamificado para tutores UNED sobre cómo usar grade-uploader.">
 </head>
 <body>
+<script>
+(function(){
+  try{
+    var saved = localStorage.getItem('gu-theme');
+    if(saved === 'light' || saved === 'dark'){ document.documentElement.setAttribute('data-theme', saved); }
+  }catch(e){}
+})();
+</script>
 <style>
   :root{
     --paper-50:#E4E8E0; --paper-0:#FAFBF6;
@@ -112,6 +120,12 @@
   }
   .hud-reset:hover{color:var(--red-600);border-color:var(--red-600);}
   @media (max-width:560px){ .hud-badges,.hud-reset{display:none;} }
+  .theme-toggle{
+    flex:none;width:34px;height:34px;border-radius:50%;border:1px solid var(--rule);background:var(--paper-0);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:.95rem;line-height:1;
+    color:var(--ink-700);transition:all .15s;padding:0;
+  }
+  .theme-toggle:hover{border-color:var(--brass-500);color:var(--brass-500);}
 
   /* side index (desktop only) */
   #sidenav{
@@ -345,6 +359,7 @@
       <div class="hud-track"><div class="hud-fill" id="hud-fill"></div></div>
     </div>
     <div class="hud-badges" id="hud-badges"></div>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Cambiar entre modo claro y oscuro" title="Cambiar tema">🌙</button>
     <button class="hud-reset" id="hud-reset" title="Reiniciar progreso">↺ Reiniciar</button>
   </div>
 </div>
@@ -1000,6 +1015,31 @@ NP_COOKIE_UZMXJ=<span class="dim">&lt;pendiente&gt;</span></div>
     link.href = canvas.toDataURL('image/png');
     link.click();
   });
+
+  /* ---------- THEME TOGGLE ---------- */
+  var themeToggle = document.getElementById('theme-toggle');
+  function currentTheme(){
+    var attr = document.documentElement.getAttribute('data-theme');
+    if(attr === 'light' || attr === 'dark') return attr;
+    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+  function renderThemeIcon(){
+    themeToggle.textContent = currentTheme() === 'dark' ? '☀️' : '🌙';
+  }
+  renderThemeIcon();
+  themeToggle.addEventListener('click', function(){
+    var next = currentTheme() === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try{ localStorage.setItem('gu-theme', next); }catch(e){}
+    renderThemeIcon();
+  });
+  if(window.matchMedia){
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(){
+      var saved;
+      try{ saved = localStorage.getItem('gu-theme'); }catch(e){}
+      if(saved !== 'light' && saved !== 'dark') renderThemeIcon();
+    });
+  }
 
   /* ---------- HUD RESET ---------- */
   document.getElementById('hud-reset').addEventListener('click', function(){
