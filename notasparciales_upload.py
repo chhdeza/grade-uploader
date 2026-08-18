@@ -67,6 +67,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
+from urllib import response
 
 import requests
 from dotenv import load_dotenv
@@ -157,18 +158,8 @@ class Auth:
     está logueado y qué grupo/curso está viendo).
     """
 
-    aspnet_sessionid: str
-    uzmx: str
-    uzmxj: str
     ntlm_user: str = ""        # ej. "chernandeza"
     ntlm_password: str = ""    # password del SSO UNED
-
-    def to_cookie_dict(self) -> dict[str, str]:
-        return {
-            "ASP.NET_SessionId": self.aspnet_sessionid,
-            "uzmx": self.uzmx,
-            "uzmxj": self.uzmxj,
-        }
 
 
 # ---------------------------------------------------------------------------
@@ -191,64 +182,280 @@ JUSTIFICACION_NO_PRESENTO = "NO PRESENTÓ O ENTREGÓ LA EVALUACION"
 # ---------------------------------------------------------------------------
 class NotasParcialesClient:
     """Cliente de bajo nivel para los PageMethods de CapturaNotas.aspx."""
-
     def __init__(self, auth: Auth, *, timeout: float = 30.0):
+        self.auth = auth
         self.session = requests.Session()
-        self.session.cookies.update(auth.to_cookie_dict())
         self.session.headers.update(COMMON_HEADERS)
         self.timeout = timeout
-        # Autenticación NTLM a nivel IIS. Sin esto el server responde 401
-        # con WWW-Authenticate: Negotiate/NTLM antes de mirar las cookies.
-        if auth.ntlm_user and auth.ntlm_password:
-            try:
-                from requests_ntlm import HttpNtlmAuth
-            except ImportError as ex:  # pragma: no cover
-                raise SystemExit(
-                    "Falta la dependencia `requests-ntlm`. Instalala con:\n"
-                    "    pip install requests-ntlm\n"
-                    f"(detalle: {ex})"
-                ) from ex
-            self.session.auth = HttpNtlmAuth(auth.ntlm_user, auth.ntlm_password)
+
+        if not auth.ntlm_user or not auth.ntlm_password:
+            raise SystemExit(
+                "Faltan credenciales NTLM.\n"
+                "Configura NP_NTLM_USER y NP_NTLM_PASSWORD en .env"
+            )
+
+# ---------------------------------------------------------------------------
+# Login al sitio de notas parciales
+# ------------------------------------------------------------------------
+    def login(self, url: str) -> None:
+        """
+        Autentica contra Notas Parciales usando NTLM y obtiene
+        automáticamente la sesión ASP.NET.
+
+        Flujo:
+            1. NTLM contra IIS
+            2. /notasparciales/?direccion2=<usuario>
+            3. CapturaNotas.aspx usando la misma sesión
+        """
+        try:
+            from requests_ntlm import HttpNtlmAuth
+        except ImportError as ex:
+            raise SystemExit(
+                "Falta requests-ntlm.\n"
+                "Instalar con:\n"
+                "    pip install requests-ntlm"
+            ) from ex
+
+        # =========================================================
+        # CONFIGURACIÓN
+        # =========================================================
+
+        notasparciales_url = (
+            f"{ORIGIN}/notasparciales/"
+        )
+
+        captura_url = (
+            f"{ORIGIN}/notasparciales/"
+            "Formularios/CapturaNotas.aspx"
+        )
+
+        usuario = self.auth.ntlm_user.strip()
+        password = self.auth.ntlm_password
+
+        if not usuario:
+            raise RuntimeError(
+                "No se encontró NP_NTLM_USER."
+            )
+
+        if not password:
+            raise RuntimeError(
+                "No se encontró NP_NTLM_PASSWORD."
+            )
+
+        # =========================================================
+        # CREAR SESIÓN
+        # =========================================================
+
+        self.session = requests.Session()
+
+        self.session.auth = HttpNtlmAuth(
+            usuario,
+            password,
+        )
+
+        self.session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 "
+                "(Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 "
+                "(KHTML, like Gecko) "
+                "Chrome/151.0.0.0 Safari/537.36"
+            ),
+            "Accept": (
+                "text/html,application/xhtml+xml,"
+                "application/xml;q=0.9,*/*;q=0.8"
+            ),
+            "Accept-Language": "es-CR,es;q=0.9,en;q=0.8",
+            "Connection": "keep-alive",
+        })
+
+        self.timeout = 30.0
+
+        # =========================================================
+        # 1. AUTENTICACIÓN NTLM
+        # =========================================================
+
+        # construimos el url con todo y parametros que incluye el usuario direccion2 debe ser el usuario NTLM
+        entrada_url = (
+            f"{notasparciales_url}"
+            f"?direccion2={usuario}"
+        )
+        #Llamamos el URL 
+        try:
+            respuesta = self.session.get(
+                entrada_url,
+                timeout=(10, 30),
+                allow_redirects=True,
+            )
+
+        except requests.exceptions.Timeout as ex:
+            raise RuntimeError(
+                "Timeout al autenticarse contra Notas Parciales."
+            ) from ex
+
+        except requests.exceptions.RequestException as ex:
+            raise RuntimeError(
+                f"Error HTTP durante autenticación NTLM: {ex}"
+            ) from ex
+
+
+        # ASP.NET necesita crear una sesión
+        aspnet_cookie = self.session.cookies.get(
+            "ASP.NET_SessionId"
+        )
+
+        if not aspnet_cookie:
+            raise RuntimeError(
+                "NTLM respondió correctamente, pero "
+                "no se obtuvo ASP.NET_SessionId."
+            )
+
+
+        # =========================================================
+        # 4. PEDIR CapturaNotas.aspx
+        # =========================================================
+        try:
+            captura = self.session.get(
+                captura_url,
+                timeout=(10, 30),
+                allow_redirects=True,
+            )
+
+        except requests.exceptions.Timeout as ex:
+            print(
+                "\n<<< TIMEOUT",
+                flush=True,
+            )
+
+            raise RuntimeError(
+                "La petición a CapturaNotas.aspx "
+                "superó el timeout de 30 segundos."
+            ) from ex
+
+        except requests.exceptions.RequestException as ex:
+            raise RuntimeError(
+                f"Error al abrir CapturaNotas.aspx: {ex}"
+            ) from ex
+
+        # =========================================================
+        # 8. GUARDAR INFORMACIÓN PARA EL RESTO DEL CLIENTE
+        # =========================================================
+
+        self.auth.aspnet_sessionid = (
+            self.session.cookies.get(
+                "ASP.NET_SessionId",
+                ""
+            )
+        )
+
+        # Estas cookies ya NO se piden al usuario.
+        # Si el servidor las genera, quedan disponibles
+        # automáticamente en self.session.cookies.
+
+        self.auth.uzmx = (
+            self.session.cookies.get(
+                "uzmx",
+                ""
+            )
+        )
+
+        self.auth.uzmxj = (
+            self.session.cookies.get(
+                "uzmxj",
+                ""
+            )
+        )
+
+        # =========================================================
+        # 9. ÉXITO
+        # =========================================================
+
+        print()
+        print("========================================")
+        print("AUTENTICACIÓN EXITOSA")
+        print("========================================")
 
     # -- Helpers ----------------------------------------------------------
-    def _post_json_string(self, method: str, raw_body: str) -> dict[str, Any]:
+    def _post_json_string(self,method: str,body: str,) -> dict[str, Any]:
         """
-        POST a `<PAGE>/<method>` con `raw_body` como literal de bytes.
+        Ejecuta un WebMethod ASP.NET que recibe JSON.
 
-        Importante: muchas llamadas usan literales de objeto JS (claves SIN
-        comillas, ej. `{_peAno: '2026'}`) que NO son JSON estándar. ASP.NET
-        las acepta porque internamente parsea con un deserializador permisivo.
-        Para reproducir EXACTAMENTE lo que hace el navegador, mandamos el
-        string crudo (en lugar de json.dumps) y dejamos que el server haga
-        su parseo.
+        Mantiene la misma sesión NTLM/ASP.NET creada durante login().
         """
+
         url = f"{PAGE}/{method}"
-        logger.debug("POST %s  body=%s", url, raw_body[:300])
-        resp = self.session.post(url, data=raw_body.encode("utf-8"), timeout=self.timeout)
-        self._check_response(method, resp)
-        return self._unwrap_d(resp.json())
 
-    def _post_json(self, method: str, payload: dict[str, Any]) -> dict[str, Any]:
-        """POST a `<PAGE>/<method>` con JSON estándar serializado por nosotros."""
+        headers = {
+            "Content-Type": "application/json; charset=utf-8",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "X-Requested-With": "XMLHttpRequest",
+            "Referer": PAGE,
+        }
+
+        resp = self.session.post(
+            url,
+            data=body.encode("utf-8"),
+            headers=headers,
+            timeout=self.timeout,
+        )
+
+        self._check_response(method, resp)
+
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            raise RuntimeError(
+                f"{method}: el servidor respondió algo que no es JSON.\n"
+                f"URL: {resp.url}\n"
+                f"Content-Type: {resp.headers.get('Content-Type')}\n"
+                f"Respuesta: {resp.text[:1000]}"
+            ) from exc
+
+        return self._unwrap_d(data)
+
+    def _post_json(self,method: str,payload: dict[str, Any],) -> dict[str, Any]:
+
         url = f"{PAGE}/{method}"
         body = json.dumps(payload, ensure_ascii=False)
-        logger.debug("POST %s  body=%s", url, body[:300])
-        resp = self.session.post(url, data=body.encode("utf-8"), timeout=self.timeout)
+
+        resp = self.session.post(
+            url,
+            data=body.encode("utf-8"),
+            headers={
+                "Content-Type": "application/json; charset=utf-8",
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "X-Requested-With": "XMLHttpRequest",
+            },
+            timeout=self.timeout,
+        )
+
         self._check_response(method, resp)
-        return self._unwrap_d(resp.json())
+
+        return self._unwrap_d(resp.json())    
 
     @staticmethod
-    def _check_response(method: str, resp: requests.Response) -> None:
+    def _check_response(method: str,resp: requests.Response,) -> None:
+        """Valida que la respuesta del servicio sea HTTP 200 y JSON."""
+
         if resp.status_code != 200:
             raise RuntimeError(
-                f"{method}: HTTP {resp.status_code}: {resp.text[:500]}"
+                f"{method}: HTTP {resp.status_code}: "
+                f"{resp.text[:500]}"
             )
+
         ctype = resp.headers.get("Content-Type", "")
+
         if "json" not in ctype.lower():
-            preview = resp.text[:300].replace("\n", " ")
+            preview = (
+                resp.text[:500]
+                .replace("\n", " ")
+                .replace("\r", " ")
+            )
+
             raise RuntimeError(
-                f"{method}: respuesta no-JSON (Content-Type={ctype!r}). "
-                "Probable expiración de cookies. Refrescá las 3 cookies en .env. "
+                f"{method}: respuesta no-JSON "
+                f"(Content-Type={ctype!r}). "
+                f"URL={resp.url}. "
                 f"Preview: {preview!r}"
             )
 
@@ -483,22 +690,13 @@ class NotasParcialesClient:
 def _load_auth_and_context_from_env(args: argparse.Namespace) -> tuple[Auth, Context]:
     load_dotenv()
     auth = Auth(
-        aspnet_sessionid=os.environ.get("NP_COOKIE_ASPNET_SESSIONID", "").strip(),
-        uzmx=os.environ.get("NP_COOKIE_UZMX", "").strip(),
-        uzmxj=os.environ.get("NP_COOKIE_UZMXJ", "").strip(),
+        #aspnet_sessionid=os.environ.get("NP_COOKIE_ASPNET_SESSIONID", "").strip(),
+        #uzmx=os.environ.get("NP_COOKIE_UZMX", "").strip(),
+        #uzmxj=os.environ.get("NP_COOKIE_UZMXJ", "").strip(),
         ntlm_user=os.environ.get("NP_NTLM_USER", "").strip(),
         ntlm_password=os.environ.get("NP_NTLM_PASSWORD", ""),
     )
-    missing_cookies = [
-        k for k in ("aspnet_sessionid", "uzmx", "uzmxj")
-        if not getattr(auth, k)
-    ]
-    if missing_cookies:
-        raise SystemExit(
-            "Faltan cookies en .env: "
-            + ", ".join(f"NP_COOKIE_{k.upper()}" for k in missing_cookies)
-            + "\nVer .env.example para instrucciones de cómo obtenerlas."
-        )
+
     if not auth.ntlm_user or not auth.ntlm_password:
         raise SystemExit(
             "Faltan credenciales NTLM en .env: NP_NTLM_USER y/o NP_NTLM_PASSWORD.\n"
@@ -539,47 +737,114 @@ def _detect_session_dead(client: NotasParcialesClient) -> None:
         raise SystemExit(
             "No se pudo validar la sesión con notasparciales.\n"
             f"Detalle: {e}\n"
-            "Refrescá las 3 cookies (NP_COOKIE_*) en .env y volvé a intentar."
+            "Reautenticación NTLM requerida. La sesión ASP.NET podría haber expirado."
         ) from e
 
 
 def cmd_probe(args: argparse.Namespace) -> int:
     auth, ctx = _load_auth_and_context_from_env(args)
+
     client = NotasParcialesClient(auth)
+    client.login(
+        "{BASE}"
+        f"?direccion2={auth.ntlm_user}"
+    )
 
-    print("== Probando autenticación ==")
-    _detect_session_dead(client)
-    print("OK: cookies válidas, el sistema está abierto.")
+    print(
+        f"\n== Nota mínima para "
+        f"{ctx.asignatura} =="
+    )
 
-    print(f"\n== Nota mínima para {ctx.asignatura} ==")
-    nota_min = client.consultar_nota_minima(ctx.asignatura, ctx.tipo)
-    print(f"Nota mínima de aprobación: {nota_min}")
+    nota_min = client.consultar_nota_minima(
+        ctx.asignatura,
+        ctx.tipo
+    )
+
+    print(
+        f"Nota mínima de aprobación: "
+        f"{nota_min}"
+    )
 
     print("\n== Instrumentos del modelo ==")
+
     instr = client.obtener_instrumentos_modelo(ctx)
-    encabezados = [h.get("Dato", "") for h in instr.get("Tabla_Encabezados", [])]
-    columnas = instr.get("Tabla_Modelo", [])
-    print("Encabezados visibles en la tabla:")
+
+    encabezados = [
+        h.get("Dato", "")
+        for h in instr.get(
+            "Tabla_Encabezados",
+            []
+        )
+    ]
+
+    columnas = instr.get(
+        "Tabla_Modelo",
+        []
+    )
+
+    print(
+        "Encabezados visibles en la tabla:"
+    )
+
     for e in encabezados:
         print(f"  - {e}")
-    print("\nMapeo Codigo -> Nombre del instrumento (lo que necesitás para --instrumento):")
+
+    print(
+        "\nMapeo Codigo -> Nombre del "
+        "instrumento "
+        "(lo que necesitás para --instrumento):"
+    )
+
     for col in columnas:
         name = col.get("name", "")
         index = col.get("index", "")
+
         if not name or name in METADATA_COLUMNS:
             continue
-        print(f"  {name:8s}  ->  {index}")
 
-    print("\n== Cargando tabla del grupo (resumen) ==")
+        print(
+            f"  {name:8s}  ->  {index}"
+        )
+
+    print(
+        "\n== Cargando tabla del grupo "
+        "(resumen) =="
+    )
+
     rows = client.cargar_notas(ctx)
-    print(f"Estudiantes en el grupo: {len(rows)}")
+
+    print(
+        f"Estudiantes en el grupo: "
+        f"{len(rows)}"
+    )
+
     for r in rows[:5]:
-        nombre = r.get("Nombre", "").strip()
-        cedula = r.get("Cedula", "")
-        promedio = r.get("Promedio", 0)
-        print(f"  {cedula}  {nombre[:40]:40s}  promedio={promedio}")
+        nombre = r.get(
+            "Nombre",
+            ""
+        ).strip()
+
+        cedula = r.get(
+            "Cedula",
+            ""
+        )
+
+        promedio = r.get(
+            "Promedio",
+            0
+        )
+
+        print(
+            f"  {cedula}  "
+            f"{nombre[:40]:40s}  "
+            f"promedio={promedio}"
+        )
+
     if len(rows) > 5:
-        print(f"  ... ({len(rows) - 5} más)")
+        print(
+            f"  ... "
+            f"({len(rows) - 5} más)"
+        )
 
     return 0
 
@@ -686,6 +951,10 @@ def _upload_one(
 def cmd_single(args: argparse.Namespace) -> int:
     auth, ctx = _load_auth_and_context_from_env(args)
     client = NotasParcialesClient(auth)
+    client.login(
+                "{BASE}"
+                f"?direccion2={auth.ntlm_user}"
+            )
     _detect_session_dead(client)
 
     logger.info("Subiendo: cedula=%s instrumento=%s nota=%s dry_run=%s",
@@ -711,6 +980,10 @@ def cmd_single(args: argparse.Namespace) -> int:
 def cmd_upload_csv(args: argparse.Namespace) -> int:
     auth, ctx = _load_auth_and_context_from_env(args)
     client = NotasParcialesClient(auth)
+    client.login(
+                "{BASE}"
+                f"?direccion2={auth.ntlm_user}"
+            )
     _detect_session_dead(client)
 
     csv_path = Path(args.upload_csv)
@@ -1324,6 +1597,12 @@ def _write_plan_csv(plan: list[PlanRow], path: Path) -> None:
 def cmd_plan(args: argparse.Namespace) -> int:
     auth, base_ctx = _load_auth_and_context_from_env(args)
     client = NotasParcialesClient(auth)
+
+    client.login(
+        "{BASE}"
+        f"?direccion2={auth.ntlm_user}"
+    )
+
     _detect_session_dead(client)
 
     xlsx_paths = [Path(p) for p in args.xlsx]
@@ -1409,6 +1688,10 @@ def cmd_plan(args: argparse.Namespace) -> int:
 def cmd_apply(args: argparse.Namespace) -> int:
     auth, base_ctx = _load_auth_and_context_from_env(args)
     client = NotasParcialesClient(auth)
+    client.login(
+            "{BASE}"
+            f"?direccion2={auth.ntlm_user}"
+        )
     _detect_session_dead(client)
 
     plan_path = Path(args.plan)
