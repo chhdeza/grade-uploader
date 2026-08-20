@@ -392,23 +392,22 @@ cd grade-uploader<br>
     <p class="muted" style="font-size:.82rem;">🧭 ¿Primera vez con Git? Mirá la <a href="git.html">guía rápida de Git</a> antes de este paso.</p>
   </section>
 
-  <!-- 3. SINGLE KEY -->
+  <!-- 3. AUTH EXPLAINER -->
   <section class="cell info">
     <span class="eyebrow">Cómo funciona la autenticación</span>
-    <h2>Una sola llave, no dos</h2>
-    <p>Antes había que cazar 3 cookies del navegador cada ~20 minutos. Ya no. El script hace el handshake NTLM y <code>requests</code> se queda solo con la sesión — vos solo guardás usuario y contraseña, una única vez, en un archivo <code>.env</code> que nunca se sube a ningún repositorio.</p>
+    <h2>Un archivo, dos líneas</h2>
+    <p>El script se conecta al sistema de Notas Parciales con tu usuario y contraseña del SSO UNED. Hace el handshake NTLM contra el servidor y mantiene la sesión activa mientras corre — no hay ningún otro paso de tu parte.</p>
     <div class="keys">
-      <div class="key-card"><span class="ic">🔑</span><h3>NTLM — usuario y contraseña</h3><p>El mismo SSO que usás para el correo institucional. Sin <code>@uned.ac.cr</code>, solo el usuario. Se configura <strong>una sola vez</strong>.</p></div>
-      <div class="key-card"><span class="ic">✨</span><h3>Cookies de sesión</h3><p>Las maneja el script solo, en memoria, mientras corre. <strong>Vos no hacés nada</strong> — ni Dev Tools, ni F5 cada 20 minutos.</p></div>
+      <div class="key-card"><span class="ic">🔑</span><h3>Usuario y contraseña SSO</h3><p>El mismo que usás para el correo institucional. Sin <code>@uned.ac.cr</code>, solo el usuario. Se configura <strong>una sola vez</strong>, en tu archivo <code>.env</code>.</p></div>
+      <div class="key-card"><span class="ic">✨</span><h3>Sesión con el servidor</h3><p>El script la maneja solo, en memoria, mientras corre. No hay que tocar el navegador para nada.</p></div>
     </div>
     <div class="tbl-wrap" style="margin-top:1.1rem;">
       <table>
-        <thead><tr><th>Antes</th><th>Ahora</th></tr></thead>
+        <thead><tr><th>Lo que resuelve el script por vos</th></tr></thead>
         <tbody>
-          <tr><td>Copiar 3 cookies del navegador con F12 cada corrida</td><td>Nada — el script las obtiene solo</td></tr>
-          <tr><td>Recordar <code>--escuela --catedra --encargado --tutor --modelo</code> cada vez</td><td>Se guardan solos tras el primer <code>probe</code> exitoso</td></tr>
-          <tr><td>Escribir <code>--cu-grupo</code> a mano por cada centro universitario</td><td>Se detecta solo comparando cédulas contra el xlsx</td></tr>
-          <tr><td>"0 estudiantes" sin ninguna pista de por qué</td><td>El script te dice exactamente qué parámetro revisar</td></tr>
+          <tr><td>Guarda el contexto del curso (<code>--escuela --catedra --encargado --tutor --modelo</code>) tras el primer <code>probe</code> exitoso — no hace falta volver a escribirlo</td></tr>
+          <tr><td>Detecta el grupo de cada centro universitario solo, comparando cédulas del xlsx contra el servidor</td></tr>
+          <tr><td>Si algún parámetro no corresponde a un curso real, te lo dice explícitamente — nunca te deja adivinando por qué no pasó nada</td></tr>
         </tbody>
       </table>
     </div>
@@ -554,7 +553,7 @@ NP_NTLM_PASSWORD=<span class="dim">&lt;pendiente&gt;</span></div>
     </details>
     <details>
       <summary>¿Tengo que indicar el grupo de cada centro universitario a mano?</summary>
-      <p>No, ya no. El modo <code>plan</code> los detecta solo comparando las cédulas del xlsx contra el servidor. <code>--cu-grupo CU=GRUPO</code> sigue existiendo por si necesitás forzar un valor manualmente.</p>
+      <p>No. El modo <code>plan</code> los detecta solo comparando las cédulas del xlsx contra el servidor. <code>--cu-grupo CU=GRUPO</code> sigue existiendo por si necesitás forzar un valor manualmente.</p>
     </details>
     <details>
       <summary>¿El modo <code>csv</code> también convierte la escala 0–100 a 0–10?</summary>

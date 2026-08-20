@@ -51,7 +51,7 @@ flowchart LR
 
 ### 🔐 Arquitectura de autenticación
 
-El script se autentica **solo con tu usuario y contraseña del SSO UNED**. No hay que copiar cookies del navegador ni abrir las herramientas de desarrollador.
+El script se autentica **solo con tu usuario y contraseña del SSO UNED**.
 
 ```mermaid
 flowchart TB
@@ -76,9 +76,6 @@ flowchart TB
 |------|----------|----------------|
 | 🔑 **NTLM** | Autenticación Windows a nivel del servidor IIS | Tu usuario y contraseña del SSO UNED (el mismo de `entornofuncionarios.uned.ac.cr`) |
 | 🍪 **Cookies de sesión** | Pase temporal que mantiene viva la sesión ASP.NET | Las emite el servidor durante el handshake NTLM; la librería `requests` las guarda sola. **El usuario no hace nada.** |
-
-> [!NOTE]
-> 📜 **Nota histórica:** versiones anteriores exigían copiar 3 cookies (`ASP.NET_SessionId`, `uzmx`, `uzmxj`) desde el navegador y pegarlas en `.env`, y había que refrescarlas cada ~20 minutos. Eso **ya no es necesario**. Si tu `.env` todavía tiene las variables `NP_COOKIE_*`, podés borrarlas: el script las ignora.
 
 ---
 
@@ -477,7 +474,7 @@ Si ya corriste `probe` para esta asignatura+ano+pac, el comando se reduce a esto
 python notasparciales_upload.py plan --ano 2026 --pac 3 --asignatura 00883 --xlsx calificaciones_moodle.xlsx --output notas_plan.csv
 ```
 
-La primera vez (o si el cache no tiene esta asignatura todavía) pasá todo explícito, igual que antes:
+La primera vez (o si el cache no tiene esta asignatura todavía), pasá todos los parámetros explícitos:
 
 ```bash
 python notasparciales_upload.py plan --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 0401780367 --asignatura 00883 --modelo 4 --xlsx calificaciones_moodle.xlsx --output notas_plan.csv
@@ -708,7 +705,7 @@ flowchart LR
 
 | # | 🚨 Síntoma | 💡 Causa probable | ✅ Solución |
 |---|-----------|-------------------|-----------|
-| 1 | `"respuesta no-JSON"` | La sesión ASP.NET expiró a mitad de una corrida larga | Volvé a ejecutar el comando: el script rehace el handshake NTLM solo. Ya **no** hay que copiar cookies del navegador |
+| 1 | `"respuesta no-JSON"` | La sesión ASP.NET expiró a mitad de una corrida larga | Volvé a ejecutar el comando: el script rehace el handshake NTLM solo |
 | 2 | `HTTP 401` o `"WWW-Authenticate: Negotiate"` | Credenciales NTLM incorrectas o faltantes | Verificá `NP_NTLM_USER` y `NP_NTLM_PASSWORD` en `.env`. El usuario es sin `@uned.ac.cr` |
 | 3 | `"Faltan credenciales NTLM"` | El `.env` no tiene usuario y/o contraseña | Completá `NP_NTLM_USER` y `NP_NTLM_PASSWORD` en `.env` (ver [🔑 Configuración de credenciales](#-configuración-de-credenciales)) |
 | 4 | `"Instrumento X no existe en este modelo"` | El código de instrumento no coincide con el modelo del servidor | Ejecutá `probe` para ver los códigos válidos (Tar1, Tar2, Proy1, etc.) |
