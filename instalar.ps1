@@ -25,12 +25,37 @@ trap {
     exit 1
 }
 
+# Frases sueltas para hacer menos árida la espera. Puramente cosméticas: no
+# afectan la lógica de instalación ni reemplazan ningún mensaje de estado real
+# (esos siguen siendo OK/ERROR/ADVERTENCIA en su color de siempre). Se eligen
+# al azar y sin repetir para que la instalación no se sienta idéntica cada vez.
+$frasesDivertidas = @(
+    "Te aseguro que esta versión SÍ funciona, no como el día que Carlos los hizo quedarse hasta las 9PM... para nada :)"
+    "Dato curioso: esta instalación tiene más manejo de errores que el sistema de Notas Parciales."
+    "Ya no hay que copiar cookies del navegador a mano. En serio. Esta vez es de verdad."
+    "Mientras esperás, andá calentando el café. Se lo va a ganar."
+    "Si algo sale mal, te lo vamos a explicar en español, no con un stacktrace de 40 líneas."
+    "Esto se probó contra el sistema real, con datos reales, para no hacerte sufrir dos veces."
+    "Recordatorio de tu instalador favorito: tomá agua. Las notas pueden esperar 10 segundos más."
+    "Con un poco de suerte, hoy te vas a casa antes de las 9PM."
+    "Paciencia: esto tarda menos que la fila de Sistemas Estudiantiles."
+    "Este script no juzga tu contraseña, pero por favor no uses '12345678'."
+)
+$frasesElegidas = $frasesDivertidas | Get-Random -Count 3
+
+function Show-Frase {
+    param([string]$Frase)
+    Write-Host "  💬 $Frase" -ForegroundColor DarkGray
+    Write-Host ""
+}
+
 Write-Host ""
 Write-Host "╔══════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
 Write-Host "║       Grade Uploader — Instalación automática           ║" -ForegroundColor Cyan
 Write-Host "║       Notas Parciales UNED                              ║" -ForegroundColor Cyan
 Write-Host "╚══════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
+Show-Frase $frasesElegidas[0]
 
 # --- Paso 1: Verificar Python ---
 Write-Host "[1/5] Verificando Python..." -ForegroundColor Yellow
@@ -99,6 +124,7 @@ if (Test-Path ".venv") {
 
 # --- Paso 3: Instalar dependencias ---
 Write-Host "[3/5] Instalando dependencias..." -ForegroundColor Yellow
+Show-Frase $frasesElegidas[1]
 
 if (-not (Test-Path "requirements.txt")) {
     Write-Host "  ERROR: No se encontró requirements.txt." -ForegroundColor Red
@@ -166,6 +192,7 @@ Write-Host "╔═════════════════════�
 Write-Host "║              Instalación completada                     ║" -ForegroundColor Green
 Write-Host "╚══════════════════════════════════════════════════════════╝" -ForegroundColor Green
 Write-Host ""
+Show-Frase $frasesElegidas[2]
 Write-Host "  Próximos pasos:" -ForegroundColor White
 Write-Host ""
 Write-Host "  1. Abrí el archivo .env con el Bloc de notas y completá" -ForegroundColor Cyan
