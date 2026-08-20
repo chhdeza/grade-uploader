@@ -29,7 +29,7 @@ Modos de uso
 2. Subir UNA nota de prueba (siempre con --dry-run primero):
        python notasparciales_upload.py --dry-run single \
            --cedula 0117540192 --instrumento Tar1 --nota 8.9 \
-           --ano 2026 --pac 3 --tipo O ... 
+           --ano 2026 --pac 3 --tipo O ...
 
 3. Subir un CSV (formato: cedula,instrumento,nota[,observacion_codigo]):
        python notasparciales_upload.py --dry-run upload-csv notas.csv \
@@ -351,9 +351,9 @@ class NotasParcialesClient:
 
         # construimos el url con todo y parametros que incluye el usuario direccion2 debe ser el usuario NTLM
         entrada_url = f"{BASE}/?direccion2={usuario}"
-        #Llamamos el URL 
+        #Llamamos el URL
         try:
-            respuesta = self.session.get(
+            self.session.get(
                 entrada_url,
                 timeout=(10, 30),
                 allow_redirects=True,
@@ -467,7 +467,7 @@ class NotasParcialesClient:
 
         self._check_response(method, resp)
 
-        return self._unwrap_d(resp.json())    
+        return self._unwrap_d(resp.json())
 
     @staticmethod
     def _check_response(method: str,resp: requests.Response,) -> None:
