@@ -1,0 +1,83 @@
+name: Revisión
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Ningún trabajo de este flujo escribe en el repositorio. Se declara explícito
+# para que el GITHUB_TOKEN llegue de sólo lectura pase lo que pase en la
+# configuración de la cuenta.
+permissions:
+  contents: read
+
+jobs:
+  # ── Que el guion sea Python válido y que sus dependencias existan ───────
+  # Todavía no hay pruebas. Esto es el mínimo honesto, y no es poco: hoy nadie
+  # sabría que requirements.txt quedó incompleto hasta que un colega intentara
+  # instalarlo en su máquina.
+  revision:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # El piso que documenta el README y la versión que el instalador le
+        # sugiere a quien no tiene Python. Si algo se rompe, conviene saber en
+        # cuál de las dos puntas.
+        python: ["3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Este flujo no hace push: que no quede el GITHUB_TOKEN en el
+          # .git/config, donde cualquier paso posterior podría leerlo.
+          persist-credentials: false
+
+      - name: Preparar Python ${{ matrix.python }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Instalar lo que declaran los requirements
+        # Vale como prueba por sí solo: si el archivo quedó incompleto, o con
+        # una restricción imposible de resolver, acá se cae.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Estilo
+        run: ruff check notasparciales_upload.py
+
+      - name: El guion compila y se importa
+        # Que el archivo sea Python válido, y que sus importaciones de nivel
+        # superior se resuelvan con lo que declara requirements.txt y nada más.
+        run: |
+          python -m compileall -q notasparciales_upload.py
+          python -c "import notasparciales_upload"
+
+      - name: La ayuda responde
+        # Recorre argparse entero: si un subcomando quedó mal declarado, esto
+        # lo encuentra sin tocar el servidor de la UNED.
+        run: python notasparciales_upload.py --help
+
+  # ── Que nadie afloje los anclajes ──────────────────────────────────────
+  # Dependabot mueve los hashes hacia adelante, pero no impide que mañana
+  # alguien escriba `uses: alguna/accion@v1`. Un tag flota: se puede reapuntar
+  # a otro commit sin que cambie una sola línea de este repositorio, y nadie se
+  # entera.
+  #
+  # pinact revisa que cada `uses:` siga fijado a un SHA completo. Con
+  # fix: "false" solamente mira y falla; no modifica archivos ni empuja nada.
+  fijado:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Revisar que todas las acciones estén fijadas por hash
+        uses: suzuki-shunsuke/pinact-action@896d595f299e71d65b9d28349d6956abe144390a # v3.0.0
+        with:
+          fix: "false" # sólo revisa; nunca reescribe
+          skip_push: "true" # y nunca empuja un commit

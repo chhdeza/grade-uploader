@@ -1,0 +1,22 @@
+# Conjunto de reglas explícito, nunca el de por defecto.
+#
+# Los valores por defecto de ruff se mueven entre versiones. Comprobado sobre
+# este mismo archivo: con las reglas por defecto de ruff 0.16.4 aparecen 12
+# hallazgos donde antes había 1, sin que haya cambiado una línea del guion. Un
+# CI que dependa de eso se pone rojo solo, un martes cualquiera, por algo que
+# nadie escribió.
+#
+# El conjunto de acá es el piso, y todo lo que marca es un defecto y no una
+# opinión: errores de sintaxis (E9), imports mal formados (E4), lo que
+# encuentra pyflakes -- nombres no definidos, variables muertas, importaciones
+# sin usar (F) -- y espacios sobrantes al final de la línea (W).
+#
+# Subirlo es una decisión aparte, y hay margen: con el conjunto que usa
+# moodleToNotas-sync (E,F,W,I,UP,B,SIM,PLW) este guion tiene 9 hallazgos más,
+# ninguno urgente. Ver el README de ese repositorio antes de apretar.
+
+target-version = "py310" # el piso que documenta el README
+line-length = 100
+
+[lint]
+select = ["E4", "E7", "E9", "F", "W"]

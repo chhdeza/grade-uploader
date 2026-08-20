@@ -1,0 +1,51 @@
+version: 2
+
+# Este programa habla con el servidor de Notas Parciales, maneja credenciales
+# NTLM y escribe notas de estudiantes. Sus dependencias -- requests,
+# requests-ntlm, openpyxl -- son justo las que acumulan advisories.
+#
+# Hasta ahora nada avisaba cuando salía uno. Esto es ese aviso.
+
+updates:
+  # ─── Dependencias de Python ────────────────────────────────────────────
+  # Dependabot lee los tres requirements del directorio: el del programa, el
+  # de desarrollo y el del ejecutable.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - dependencias
+    groups:
+      # Un solo PR por semana en vez de cinco sueltos. Son pocas y se revisan
+      # mejor juntas.
+      dependencias:
+        patterns:
+          - "*"
+
+  # ─── Acciones de GitHub ────────────────────────────────────────────────
+  # Las acciones del flujo van fijadas por hash. Eso protege contra que un tag
+  # se reapunte a otro commit, pero un hash no se mueve nunca, ni siquiera
+  # cuando la versión a la que apunta resulta tener una vulnerabilidad.
+  #
+  # Dependabot cubre ese hueco: entiende el formato `accion@<hash> # vX.Y.Z` y
+  # actualiza el hash y el comentario a la vez. Fijar sin un mecanismo de
+  # actualización no es más seguro; sólo cambia una vulnerabilidad rápida por
+  # una lenta.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci)"
+    labels:
+      - dependencias
+      - seguridad
+    groups:
+      acciones:
+        patterns:
+          - "*"
