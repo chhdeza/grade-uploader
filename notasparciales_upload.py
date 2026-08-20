@@ -2305,29 +2305,48 @@ def _add_context_args(p: argparse.ArgumentParser, *, cu_grupo_required: bool = T
     g.add_argument("--usuario-role", type=int, default=None, help="Rol del usuario (default 14 = Tutor)")
 
 
+def _build_common_parser() -> argparse.ArgumentParser:
+    """
+    Flags "globales" (-v, --dry-run, --commit, --allow-update, etc.).
+
+    argparse subparsers grab every token after the mode name and hand them
+    to the chosen subparser; flags that only exist on the top-level parser
+    become "unrecognized arguments" if typed AFTER the mode (e.g.
+    `apply --plan x.csv --commit`, which reads naturally and is exactly how
+    every guided next-step suggestion in this script formats it). Defining
+    these once here and attaching them via `parents=` to both the top-level
+    parser and every subparser makes them work in either position.
+    """
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("-v", "--verbose", action="count", default=0, help="-v info, -vv debug")
+    common.add_argument("--dry-run", action="store_true", default=None,
+                         help="No envía actualizarNotas (default si no se pasa --commit)")
+    common.add_argument("--commit", dest="dry_run", action="store_false",
+                         help="Confirma escritura real (desactiva dry-run)")
+    common.add_argument("--allow-update", action="store_true",
+                         help="Permite sobrescribir notas existentes (requiere --justificacion-codigo)")
+    common.add_argument("--justificacion-codigo", type=int, default=0,
+                         help="Código de justificación si la nota ya existe (1002, 2005, 2003, 1004, 2001, 2000)")
+    common.add_argument("--justificacion-texto", default="",
+                         help="Texto libre para la justificación")
+    common.add_argument("--delay", type=float, default=0.5,
+                         help="Segundos entre requests en modo CSV (default 0.5)")
+    return common
+
+
 def build_parser() -> argparse.ArgumentParser:
+    common = _build_common_parser()
+
     p = argparse.ArgumentParser(
         prog="notasparciales_upload",
         description="Sube notas a UNED Notas Parciales. Auth NTLM mediante .env.",
+        parents=[common],
     )
-    p.add_argument("-v", "--verbose", action="count", default=0, help="-v info, -vv debug")
-    p.add_argument("--dry-run", action="store_true", default=None,
-                   help="No envía actualizarNotas (default si no se pasa --commit)")
-    p.add_argument("--commit", dest="dry_run", action="store_false",
-                   help="Confirma escritura real (desactiva dry-run)")
-    p.add_argument("--allow-update", action="store_true",
-                   help="Permite sobrescribir notas existentes (requiere --justificacion-codigo)")
-    p.add_argument("--justificacion-codigo", type=int, default=0,
-                   help="Código de justificación si la nota ya existe (1002, 2005, 2003, 1004, 2001, 2000)")
-    p.add_argument("--justificacion-texto", default="",
-                   help="Texto libre para la justificación")
-    p.add_argument("--delay", type=float, default=0.5,
-                   help="Segundos entre requests en modo CSV (default 0.5)")
 
     sub = p.add_subparsers(dest="mode", required=True)
 
     p_estado = sub.add_parser(
-        "estado",
+        "estado", parents=[common],
         help="¿En qué paso voy? Muestra el avance y el próximo comando (no se conecta al servidor)",
     )
     p_estado.add_argument(
@@ -2335,21 +2354,21 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Ruta al plan a inspeccionar (default {PLAN_DEFAULT})",
     )
 
-    p_probe = sub.add_parser("probe", help="Verifica auth y descubre instrumentos del modelo")
+    p_probe = sub.add_parser("probe", parents=[common], help="Verifica auth y descubre instrumentos del modelo")
     _add_context_args(p_probe)
 
-    p_single = sub.add_parser("single", help="Sube UNA nota (ideal para probar)")
+    p_single = sub.add_parser("single", parents=[common], help="Sube UNA nota (ideal para probar)")
     _add_context_args(p_single)
     p_single.add_argument("--cedula", required=True, help="Cédula del estudiante")
     p_single.add_argument("--instrumento", required=True, help="Código del instrumento (ej. Tar1, Proy1)")
     p_single.add_argument("--nota", required=True, help="Nota (0-10, ej. 8.9)")
 
-    p_csv = sub.add_parser("csv", help="Sube un CSV con muchas notas")
+    p_csv = sub.add_parser("csv", parents=[common], help="Sube un CSV con muchas notas")
     _add_context_args(p_csv)
     p_csv.add_argument("--upload-csv", required=True, help="Path al CSV (cedula,instrumento,nota[,observacion_codigo,justificacion])")
 
     p_plan = sub.add_parser(
-        "plan",
+        "plan", parents=[common],
         help="Lee xlsx exportados de Moodle, consulta el servidor y genera un plan.csv auditable",
     )
     _add_context_args(p_plan, cu_grupo_required=False)
@@ -2371,7 +2390,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_plan.add_argument("--output", default="notas_plan.csv", help="Ruta al CSV de salida (default notas_plan.csv)")
 
     p_apply = sub.add_parser(
-        "apply",
+        "apply", parents=[common],
         help="Ejecuta un plan.csv generado por 'plan' (con --commit; por defecto dry-run)",
     )
     _add_context_args(p_apply, cu_grupo_required=False)
