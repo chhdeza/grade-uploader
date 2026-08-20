@@ -12,7 +12,6 @@ En lugar de cargar notas una por una en el navegador, este script lee las califi
 - [⚙️ Requisitos previos](#️-requisitos-previos)
 - [🚀 Instalación](#-instalación)
 - [🔑 Configuración de credenciales](#-configuración-de-credenciales)
-- [🍪 Cómo obtener las cookies del navegador](#-cómo-obtener-las-cookies-del-navegador)
 - [📊 Formato de archivos de entrada](#-formato-de-archivos-de-entrada)
 - [🛠️ Modos de uso](#️-modos-de-uso)
 - [✅ Flujo recomendado paso a paso](#-flujo-recomendado-paso-a-paso)
@@ -50,26 +49,22 @@ flowchart LR
 
 ### 🔐 Arquitectura de autenticación
 
-El sistema de Notas Parciales usa **dos capas de autenticación** apiladas. Ambas son necesarias:
+El script se autentica **solo con tu usuario y contraseña del SSO UNED**. No hay que copiar cookies del navegador ni abrir las herramientas de desarrollador.
 
 ```mermaid
 flowchart TB
     subgraph user ["👤 Lo que hace el usuario"]
         U1["1️⃣ Anotar usuario y\ncontraseña del SSO UNED\nen el archivo .env"]
-        U2["2️⃣ Iniciar sesión en\nel navegador"]
-        U3["3️⃣ Copiar 3 cookies\ndesde Dev Tools\nal archivo .env"]
     end
 
     subgraph script ["🤖 Lo que hace el script"]
         S1["Lee .env"]
         S2["🔑 NTLM handshake\ncon IIS\n(usuario + contraseña)"]
-        S3["🍪 Envía cookies\nde sesión ASP.NET"]
+        S3["🍪 Recibe y guarda solo\nlas cookies de sesión\nASP.NET automáticamente"]
         S4["✅ Acceso completo\nal servidor"]
     end
 
     U1 --> S1
-    U2 --> U3
-    U3 --> S1
     S1 --> S2
     S2 --> S3
     S3 --> S4
@@ -78,7 +73,10 @@ flowchart TB
 | Capa | ¿Qué es? | ¿De dónde sale? |
 |------|----------|----------------|
 | 🔑 **NTLM** | Autenticación Windows a nivel del servidor IIS | Tu usuario y contraseña del SSO UNED (el mismo de `entornofuncionarios.uned.ac.cr`) |
-| 🍪 **Cookies de sesión** | Pase temporal que el navegador recibe al iniciar sesión | Se copian desde las herramientas de desarrollador del navegador |
+| 🍪 **Cookies de sesión** | Pase temporal que mantiene viva la sesión ASP.NET | Las emite el servidor durante el handshake NTLM; la librería `requests` las guarda sola. **El usuario no hace nada.** |
+
+> [!NOTE]
+> 📜 **Nota histórica:** versiones anteriores exigían copiar 3 cookies (`ASP.NET_SessionId`, `uzmx`, `uzmxj`) desde el navegador y pegarlas en `.env`, y había que refrescarlas cada ~20 minutos. Eso **ya no es necesario**. Si tu `.env` todavía tiene las variables `NP_COOKIE_*`, podés borrarlas: el script las ignora.
 
 ---
 
@@ -189,225 +187,6 @@ NP_NTLM_PASSWORD=tu_contraseña_aqui
 
 > [!IMPORTANT]
 > El usuario es **solo el nombre**, sin `@uned.ac.cr`. Por ejemplo: `jperez`, NO `jperez@uned.ac.cr`.
-
-### Parte 2 — 🍪 Cookies de sesión (requiere Dev Tools)
-
-Las cookies son como un **pase temporal** que el navegador recibe al iniciar sesión en Notas Parciales. El script necesita ese pase para poder comunicarse con el servidor.
-
-```ini
-NP_COOKIE_ASPNET_SESSIONID=abc123xyz...
-NP_COOKIE_UZMX=A2B3C4D5E6...
-NP_COOKIE_UZMXJ=F7G8H9I0J1...
-```
-
-> [!WARNING]
-> ⏱️ Las cookies **expiran después de ~20 minutos de inactividad**. Si el script empieza a fallar, hay que volver al navegador, recargar la página y copiar cookies nuevas. Vea la sección siguiente para instrucciones detalladas.
-
-📌 **¿De dónde salen estos valores?** Vea la siguiente sección: [🍪 Cómo obtener las cookies del navegador](#-cómo-obtener-las-cookies-del-navegador).
-
----
-
-## 🍪 Cómo obtener las cookies del navegador
-
-Esta es la parte que requiere un poco más de atención. Seguí los pasos exactos para tu navegador y todo saldrá bien. 🙂
-
-### 0️⃣ Paso previo (igual para todos los navegadores)
-
-Antes de copiar las cookies, asegurate de que la sesión esté activa:
-
-1. Abrí tu navegador favorito (Chrome, Edge o Firefox).
-2. Navegá a: **https://produccion.uned.ac.cr/notasparciales/Formularios/CapturaNotas.aspx**
-3. Iniciá sesión normalmente con tus credenciales UNED.
-4. **Verificá que la página cargó correctamente:** debés ver los dropdowns de Año, PAC, Escuela, etc. Si ves una pantalla de login o una página en blanco, recargá con F5.
-
-> [!TIP]
-> 💡 Mantené esta pestaña del navegador **abierta** mientras usás el script. Así las cookies no expiran tan rápido.
-
----
-
-### 🌐 Google Chrome (Windows)
-
-<details open>
-<summary><strong>🖱️ Click para ver las instrucciones paso a paso</strong></summary>
-
-**1️⃣ Abrir las Herramientas de Desarrollador**
-
-- Presioná la tecla **`F12`** en tu teclado
-  - *Alternativa:* click derecho en cualquier parte de la página → **"Inspeccionar"**
-- Se abrirá un panel en la parte inferior o lateral de la ventana
-
-**2️⃣ Ir a la pestaña "Application"**
-
-- En la barra superior del panel de DevTools, buscá la pestaña que dice **"Application"**
-- Si no la ves, hacé click en el botón **`>>`** (doble flecha) para ver las pestañas ocultas
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Elements  Console  Sources  Network  ▶▶  Application  ...  │
-│                                           ^^^^^^^^^^^       │
-│                                           ESTA PESTAÑA     │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**3️⃣ Navegar a Cookies**
-
-- En el **panel izquierdo**, buscá la sección **"Storage"** (Almacenamiento)
-- Expandí **"Cookies"** haciendo click en el triángulo ▶
-- Hacé click en **`https://produccion.uned.ac.cr`**
-
-```
-┌──────────────────────────┬──────────────────────────────────┐
-│ Storage                  │  Name              │ Value       │
-│  ▼ Cookies               │  ASP.NET_SessionId │ abc123...   │ ← 📋 Copiar
-│    ► produccion.uned...  │  uzmx              │ A2B3C4...   │ ← 📋 Copiar
-│                          │  uzmxj             │ F7G8H9...   │ ← 📋 Copiar
-└──────────────────────────┴──────────────────────────────────┘
-```
-
-**4️⃣ Copiar cada valor**
-
-Para cada una de las 3 cookies (`ASP.NET_SessionId`, `uzmx`, `uzmxj`):
-
-1. 🖱️ Hacé **doble click** sobre el texto en la columna **"Value"**
-2. El texto se seleccionará automáticamente
-3. Presioná **`Ctrl + C`** para copiar
-4. Abrí tu archivo `.env` y pegá el valor con **`Ctrl + V`**
-
-Resultado en tu archivo `.env`:
-```ini
-NP_COOKIE_ASPNET_SESSIONID=abc123xyz789...
-NP_COOKIE_UZMX=A2B3C4D5E6F7...
-NP_COOKIE_UZMXJ=F7G8H9I0J1K2...
-```
-
-</details>
-
----
-
-### 🔵 Microsoft Edge (Windows)
-
-<details>
-<summary><strong>🖱️ Click para ver las instrucciones paso a paso</strong></summary>
-
-> 💡 Edge usa el mismo motor que Chrome, así que los pasos son **prácticamente idénticos**.
-
-**1️⃣ Abrir las Herramientas de Desarrollador**
-
-- Presioná **`F12`**
-  - *Alternativa:* click derecho → **"Inspeccionar"**
-  - *Alternativa:* menú `···` (arriba a la derecha) → "Más herramientas" → "Herramientas de desarrollo"
-
-**2️⃣ Ir a la pestaña "Aplicación"**
-
-- En la barra superior de DevTools, buscá **"Aplicación"** (puede aparecer en español si Edge está en español)
-- Si no la ves, hacé click en **`>>`** para ver pestañas ocultas
-- En inglés se llama **"Application"**
-
-**3️⃣ Navegar a Cookies**
-
-- Panel izquierdo → **"Almacenamiento"** (o "Storage") → **"Cookies"** → click en **`https://produccion.uned.ac.cr`**
-
-**4️⃣ Copiar cada valor**
-
-- Igual que en Chrome: **doble click** en la columna "Value" → **`Ctrl + C`** → pegar en `.env`
-
-Buscá las mismas 3 cookies:
-| Cookie | Variable en `.env` |
-|--------|-------------------|
-| `ASP.NET_SessionId` | `NP_COOKIE_ASPNET_SESSIONID` |
-| `uzmx` | `NP_COOKIE_UZMX` |
-| `uzmxj` | `NP_COOKIE_UZMXJ` |
-
-</details>
-
----
-
-### 🦊 Mozilla Firefox (Windows)
-
-<details>
-<summary><strong>🖱️ Click para ver las instrucciones paso a paso</strong></summary>
-
-**1️⃣ Abrir las Herramientas de Desarrollador**
-
-- Presioná **`F12`**
-  - *Alternativa:* click derecho → **"Inspeccionar"**
-  - *Alternativa:* menú ☰ → "Más herramientas" → "Herramientas para desarrolladores web"
-
-**2️⃣ Ir a la pestaña "Almacenamiento"**
-
-- En Firefox la pestaña se llama **"Almacenamiento"** (o **"Storage"** si está en inglés)
-- ⚠️ **No confundir** con "Red" ni con "Consola" — es **"Almacenamiento"**
-
-```
-┌────────────────────────────────────────────────────────────────┐
-│ Inspector  Consola  Depurador  Red  Almacenamiento  ...       │
-│                                     ^^^^^^^^^^^^^^             │
-│                                     ESTA PESTAÑA              │
-└────────────────────────────────────────────────────────────────┘
-```
-
-**3️⃣ Navegar a Cookies**
-
-- En el panel izquierdo, expandí **"Cookies"**
-- Hacé click en **`https://produccion.uned.ac.cr`**
-
-```
-┌──────────────────────────┬──────────────────────────────────┐
-│ Almacenamiento           │  Nombre             │ Valor      │
-│  ▼ Cookies               │  ASP.NET_SessionId  │ abc123...  │ ← 📋
-│    ► produccion.uned...  │  uzmx               │ A2B3C4...  │ ← 📋
-│                          │  uzmxj              │ F7G8H9...  │ ← 📋
-└──────────────────────────┴──────────────────────────────────┘
-```
-
-**4️⃣ Copiar cada valor**
-
-1. 🖱️ Hacé **doble click** sobre el valor de la cookie
-2. Se abrirá un campo de edición con el texto seleccionado
-3. Presioná **`Ctrl + C`** para copiar
-4. Pegá en tu archivo `.env` con **`Ctrl + V`**
-
-</details>
-
----
-
-### ⚡ Resumen rápido (para usuarios experimentados)
-
-| Navegador | Atajo | Ruta al panel de cookies |
-|-----------|-------|-------------------------|
-| 🌐 Chrome | `F12` | Application → Storage → Cookies → `produccion.uned.ac.cr` |
-| 🔵 Edge | `F12` | Aplicación → Almacenamiento → Cookies → `produccion.uned.ac.cr` |
-| 🦊 Firefox | `F12` | Almacenamiento → Cookies → `produccion.uned.ac.cr` |
-
-**Cookies a copiar:**
-
-| Cookie en el navegador | Variable en `.env` |
-|------------------------|-----------|
-| `ASP.NET_SessionId` | `NP_COOKIE_ASPNET_SESSIONID` |
-| `uzmx` | `NP_COOKIE_UZMX` |
-| `uzmxj` | `NP_COOKIE_UZMXJ` |
-
----
-
-### 🔄 ¿Qué hacer cuando las cookies expiran?
-
-Las cookies expiran tras **~20 minutos de inactividad** en el navegador.
-
-**🚨 Síntomas de cookies expiradas:**
-- El script muestra: `"respuesta no-JSON (Content-Type=...)"` 
-- O muestra: `"Probable expiración de cookies. Rfrescá las 3 cookies en .env"`
-
-**✅ Solución (30 segundos):**
-
-1. Volvé al navegador donde tenés abierta la página de Notas Parciales
-2. Presioná **`F5`** para recargar la página
-3. Esperá a que cargue completamente
-4. Repetí el proceso de copiar las 3 cookies (los valores cambiaron)
-5. Pegá los nuevos valores en `.env`
-6. Guardá `.env` y volvé a ejecutar el script
-
-> [!TIP]
-> 💡 **Truco para que duren más:** mantené la pestaña del navegador abierta y recargá la página (F5) **justo antes** de ejecutar el script. Así obtenés cookies frescas cada vez.
 
 ---
 
@@ -722,10 +501,10 @@ Este es el proceso completo que recomendamos para subir notas de forma segura:
 flowchart TD
     Start(["🏁 Inicio"]) --> Step1
     Step1["1️⃣ Exportar xlsx\ndesde Moodle"] --> Step2
-    Step2["2️⃣ Configurar .env\n(NTLM + cookies)"] --> Step3
-    Step3["3️⃣ Ejecutar probe\npara verificar auth"] --> Check1
+    Step2["2️⃣ Configurar .env\n(usuario y contraseña SSO)"] --> Step3
+    Step3["3️⃣ Ejecutar probe\npara verificar auth\ny cachear contexto"] --> Check1
     Check1{"🔍 ¿Probe exitoso?"}
-    Check1 -- "❌ No" --> Fix1["Revisar cookies\ny credenciales"]
+    Check1 -- "❌ No" --> Fix1["Revisar credenciales\ny parámetros del curso"]
     Fix1 --> Step2
     Check1 -- "✅ Sí" --> Step4
     Step4["4️⃣ Ejecutar plan\ncon el xlsx"] --> Step5
@@ -876,9 +655,9 @@ flowchart LR
 
 | # | 🚨 Síntoma | 💡 Causa probable | ✅ Solución |
 |---|-----------|-------------------|-----------|
-| 1 | `"respuesta no-JSON"` o `"Probable expiración de cookies"` | Las cookies expiraron (~20 min sin actividad) | Recargá la página en el navegador (F5), copiá las 3 cookies nuevamente al `.env` |
+| 1 | `"respuesta no-JSON"` | La sesión ASP.NET expiró a mitad de una corrida larga | Volvé a ejecutar el comando: el script rehace el handshake NTLM solo. Ya **no** hay que copiar cookies del navegador |
 | 2 | `HTTP 401` o `"WWW-Authenticate: Negotiate"` | Credenciales NTLM incorrectas o faltantes | Verificá `NP_NTLM_USER` y `NP_NTLM_PASSWORD` en `.env`. El usuario es sin `@uned.ac.cr` |
-| 3 | `"Faltan cookies en .env"` | El archivo `.env` no tiene las 3 cookies | Seguí la guía [🍪 Cómo obtener las cookies](#-cómo-obtener-las-cookies-del-navegador) |
+| 3 | `"Faltan credenciales NTLM"` | El `.env` no tiene usuario y/o contraseña | Completá `NP_NTLM_USER` y `NP_NTLM_PASSWORD` en `.env` (ver [🔑 Configuración de credenciales](#-configuración-de-credenciales)) |
 | 4 | `"Instrumento X no existe en este modelo"` | El código de instrumento no coincide con el modelo del servidor | Ejecutá `probe` para ver los códigos válidos (Tar1, Tar2, Proy1, etc.) |
 | 5 | `"Cédula no aparece en el roster oficial del grupo"` | La cédula del xlsx no está en el grupo de Notas Parciales | Verificá que el campo "Número de ID" en Moodle tenga la cédula correcta |
 | 6 | `"would_overwrite"` en el plan | El servidor ya tiene una nota diferente a la del xlsx | Si querés sobrescribir, usá `--allow-update` con `--justificacion-codigo` |
@@ -914,12 +693,16 @@ Git es un sistema de control de versiones que **registra y publica** todos los a
 En este proyecto, `.gitignore` contiene:
 
 ```
-.env              ← Tu archivo con contraseñas y cookies
-__pycache__/      ← Archivos temporales de Python
-dist/             ← Ejecutables generados
-build/            ← Archivos de compilación
-*.spec            ← Configuración de PyInstaller
-.venv/            ← Entorno virtual de Python
+.env                            ← Tu archivo con usuario y contraseña
+__pycache__/                    ← Archivos temporales de Python
+dist/                           ← Ejecutables generados
+build/                          ← Archivos de compilación
+*.spec                          ← Configuración de PyInstaller
+.venv/                          ← Entorno virtual de Python
+.notasparciales_context.json    ← Cache de códigos de curso (sin credenciales)
+notas_plan.csv                  ← Plan generado (contiene datos de estudiantes)
+notas_plan_resultados.csv       ← Resultados de la carga
+*.xlsx                          ← Calificaciones exportadas de Moodle
 ```
 
 ### ⚠️ ¿Por qué es peligroso NO usar `.gitignore`?
@@ -927,7 +710,8 @@ build/            ← Archivos de compilación
 Sin `.gitignore`, al ejecutar `git add .` y `git push`, **todos los archivos de la carpeta se suben al repositorio**, incluyendo tu archivo `.env` con:
 
 - 🔑 Tu **usuario y contraseña** del SSO UNED (`NP_NTLM_USER`, `NP_NTLM_PASSWORD`)
-- 🍪 Tus **cookies de sesión** (`NP_COOKIE_*`)
+
+Y además, los archivos de trabajo con **datos personales de estudiantes** (cédulas, nombres y notas): el `.xlsx` exportado de Moodle y los `notas_plan*.csv` generados por el script.
 
 > [!CAUTION]
 > 🚨 **Si tu `.env` se sube a GitHub, cualquier persona con acceso al repositorio podría:**
@@ -939,24 +723,22 @@ Sin `.gitignore`, al ejecutar `git add .` y `git push`, **todos los archivos de 
 
 Incluso si borrás el archivo después, **Git conserva el historial**: los secretos seguirán accesibles en commits anteriores a menos que se reescriba la historia del repositorio (un proceso complejo y no siempre viable en repos públicos).
 
-### 🍪 Sobre las cookies y su seguridad
+### 🔐 Sobre las credenciales y la sesión
 
-Las cookies (`ASP.NET_SessionId`, `uzmx`, `uzmxj`) son **tokens de sesión temporales**. Algunos puntos importantes:
+Tu `.env` contiene **usuario y contraseña del SSO UNED en texto plano**. Esas credenciales no expiran solas y sirven para todos los sistemas UNED, así que son el secreto más sensible de este proyecto.
 
 | Aspecto | Detalle |
 |---------|--------|
-| ⏱️ **Duración** | Expiran tras ~20 minutos de inactividad. Son de corta vida. |
-| 🔗 **Alcance** | Solo funcionan para `produccion.uned.ac.cr/notasparciales`. No sirven para otros sitios. |
-| 🔄 **Renovación** | Cambian cada vez que recargás la página. Las cookies viejas dejan de funcionar. |
-| 🧩 **Sin las credenciales NTLM** | Las cookies **solas** no bastan para acceder al sistema. Se necesitan **ambas** capas (NTLM + cookies) simultáneamente. |
+| 🔑 **Credenciales (`.env`)** | Permanentes hasta que cambiés la contraseña. Dan acceso a correo, entorno de funcionarios y Notas Parciales. **Tratalas como cualquier otra contraseña institucional.** |
+| 🍪 **Cookies de sesión** | Las emite el servidor durante el handshake NTLM y viven solo en memoria mientras corre el script. **No se guardan en disco ni hay que copiarlas a mano.** |
+| 📄 **Cache de contexto** | `.notasparciales_context.json` guarda **solo códigos de curso** (escuela, cátedra, encargado, tutor, modelo). No contiene credenciales ni datos de estudiantes. |
 
 > [!IMPORTANT]
 > 📌 **Buenas prácticas:**
 > - ✅ **Nunca** subas `.env` a Git (el `.gitignore` de este proyecto ya lo previene)
 > - ✅ **Nunca** compartas tu archivo `.env` por correo, WhatsApp o chat
 > - ✅ Si sospechás que tus credenciales se filtraron, **cambiá tu contraseña del SSO UNED inmediatamente**
-> - ✅ Cerrá la sesión del navegador cuando terminés de usar el script
-> - ✅ Las cookies expiran solas, pero cerrar sesión las invalida antes
+> - ✅ Tampoco subas los `.xlsx` ni los `notas_plan*.csv`: llevan cédulas, nombres y notas de estudiantes
 
 ### 🔍 ¿Cómo verificar que `.gitignore` está funcionando?
 
