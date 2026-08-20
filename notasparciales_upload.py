@@ -170,7 +170,11 @@ def _load_context_cache() -> dict[str, dict[str, Any]]:
 def _save_context_cache(ctx: "Context") -> None:
     cache = _load_context_cache()
     key = _cache_key(ctx.asignatura, ctx.ano, ctx.pac, ctx.tipo)
-    cache[key] = {field: getattr(ctx, field) for field in _CACHED_FIELDS}
+    entry = {field: getattr(ctx, field) for field in _CACHED_FIELDS}
+    # Timestamp para que `estado` pueda decir cuándo se verificó el curso.
+    # No es un campo de contexto: _apply_context_cache solo lee _CACHED_FIELDS.
+    entry["_guardado"] = time.strftime("%Y-%m-%d %H:%M")
+    cache[key] = entry
     CONTEXT_CACHE_PATH.write_text(
         json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8"
     )
@@ -194,6 +198,56 @@ def _apply_context_cache(args: argparse.Namespace) -> list[str]:
             setattr(args, field, entry[field])
             filled.append(field)
     return filled
+
+
+# ---------------------------------------------------------------------------
+# Guía al usuario: cada comando termina diciendo en qué paso va y cuál es el
+# comando exacto que sigue, ya con los valores que el profesor usó. La idea es
+# que nunca tenga que armar un comando a mano ni volver al README.
+#
+# IMPORTANTE: los comandos sugeridos se imprimen SIEMPRE en UNA sola línea.
+# Ni cmd.exe ni PowerShell entienden la continuación con "\" que se usa en
+# los ejemplos de Unix, así que un comando multilínea copiado y pegado falla.
+# ---------------------------------------------------------------------------
+GUIDE_WIDTH = 70
+GUIDE_RULE = "═" * GUIDE_WIDTH
+PLAN_DEFAULT = "notas_plan.csv"
+
+
+def _invocation() -> str:
+    """Cómo se está ejecutando el script, para sugerir comandos copiables."""
+    if getattr(sys, "frozen", False):  # ejecutable armado con PyInstaller
+        return Path(sys.executable).name
+    return f"python {Path(sys.argv[0]).name}"
+
+
+def _ctx_flags(ctx: "Context") -> str:
+    """Los flags mínimos de contexto: el resto sale del cache."""
+    flags = f"--ano {ctx.ano} --pac {ctx.pac} --asignatura {ctx.asignatura}"
+    if ctx.tipo != "O":
+        flags += f" --tipo {ctx.tipo}"
+    return flags
+
+
+def _guess_xlsx() -> str | None:
+    """Si hay UN solo xlsx en la carpeta, lo usamos en el comando sugerido."""
+    files = [
+        f for f in sorted(Path(".").glob("*.xlsx"))
+        if not f.name.startswith("~$")  # archivos de bloqueo de Excel
+    ]
+    return files[0].name if len(files) == 1 else None
+
+
+def _guide(title: str, body: list[str]) -> None:
+    """Imprime un bloque de guía al final de un comando."""
+    print()
+    print(GUIDE_RULE)
+    print(f" {title}")
+    print(GUIDE_RULE)
+    for line in body:
+        print(line)
+    print(GUIDE_RULE)
+    print()
 
 
 # ---------------------------------------------------------------------------
@@ -863,11 +917,48 @@ def cmd_probe(args: argparse.Namespace) -> int:
 
     if instrumentos_reales and rows:
         _save_context_cache(ctx)
-        print(
-            f"\n✓ Contexto guardado en {CONTEXT_CACHE_PATH} para "
-            f"--asignatura {ctx.asignatura} (ano={ctx.ano} pac={ctx.pac} "
-            f"tipo={ctx.tipo}). Las próximas corridas de plan/apply/single/csv "
-            "pueden omitir --escuela/--catedra/--encargado/--tutor/--modelo."
+        xlsx = _guess_xlsx()
+        cmd = (
+            f"{_invocation()} plan {_ctx_flags(ctx)} "
+            f"--xlsx {xlsx or 'calificaciones.xlsx'}"
+        )
+        body = [
+            f" Curso:        {ctx.asignatura}  (año {ctx.ano}, PAC {ctx.pac})",
+            f" Instrumentos: {', '.join(instrumentos_reales)}",
+            f" Estudiantes:  {len(rows)} en CU {ctx.cu} / Grupo {ctx.grupo}",
+            "",
+            f" Los códigos del curso quedaron guardados en {CONTEXT_CACHE_PATH},",
+            " así que de ahora en adelante no hace falta volver a escribirlos.",
+            "",
+            " ▶ SIGUIENTE PASO — copiá y pegá esta línea:",
+            "",
+            f"   {cmd}",
+        ]
+        if not xlsx:
+            body += [
+                "",
+                " (Cambiá 'calificaciones.xlsx' por el nombre real de tu",
+                "  archivo exportado de Moodle)",
+            ]
+        _guide("✓ PASO 1 DE 3 COMPLETADO — Conexión verificada", body)
+    else:
+        _guide(
+            "✗ PASO 1 DE 3 — No se pudo verificar el curso",
+            [
+                " La conexión y la contraseña funcionan, pero el sistema no",
+                " devolvió datos para esta combinación de parámetros.",
+                "",
+                " Revisá en la página de Captura de Notas que estos valores",
+                " coincidan con los del curso que querés cargar:",
+                "",
+                f"   --asignatura  {ctx.asignatura}",
+                f"   --modelo      {ctx.modelo}",
+                f"   --pac         {ctx.pac}",
+                f"   --cu          {ctx.cu}",
+                f"   --grupo       {ctx.grupo}",
+                "",
+                " NO es un problema de usuario/contraseña ni del archivo .env.",
+            ],
         )
 
     return 0
@@ -1781,7 +1872,62 @@ def cmd_plan(args: argparse.Namespace) -> int:
     out = Path(args.output)
     _write_plan_csv(plan, out)
     print(f"\nPlan escrito en: {out}")
-    print(f"Inspeccionalo en Excel/VS Code antes de correr 'apply'.")
+
+    n_upload = counts.get(ACCION_UPLOAD, 0)
+    n_np = counts.get(ACCION_MARK_NOT_PRESENTED, 0)
+    n_over = counts.get(ACCION_WOULD_OVERWRITE, 0)
+    n_review = counts.get(ACCION_REVIEW, 0)
+    n_roster = counts.get(ACCION_SKIP_NOT_IN_ROSTER, 0)
+
+    if n_upload + n_np + n_over == 0:
+        _guide(
+            "⚠ PASO 2 DE 3 — El plan no tiene nada para subir",
+            [
+                f" Se generó {out}, pero ninguna fila requiere acción.",
+                "",
+                " Puede ser que las notas ya estén cargadas (eso está bien),",
+                " o que algo no haya cruzado con el sistema. Abrí el archivo",
+                " en Excel y mirá la columna 'motivo' para saber cuál es.",
+                "",
+                " 🔒 NO se escribió nada en el sistema de la UNED.",
+            ],
+        )
+        return 0
+
+    body = [
+        f" 📄 Archivo generado: {out}",
+        "",
+        " Esto es lo que pasaría al ejecutar el paso 3:",
+    ]
+    if n_upload:
+        body.append(f"   • {n_upload:>4d} notas nuevas se subirían")
+    if n_np:
+        body.append(f"   • {n_np:>4d} estudiantes se marcarían como 'no presentó'")
+    if n_over:
+        body.append(
+            f"   • {n_over:>4d} notas YA EXISTENTES cambiarían "
+            "(requiere --allow-update)"
+        )
+    if n_review or n_roster:
+        body.append("")
+        if n_review:
+            body.append(f"   ⚠ {n_review} fila(s) marcadas 'review': revisalas a mano")
+        if n_roster:
+            body.append(
+                f"   ⚠ {n_roster} estudiante(s) del xlsx no están en el grupo oficial"
+            )
+    body += [
+        "",
+        " 🔒 TODAVÍA NO SE ESCRIBIÓ NADA en el sistema de la UNED.",
+        "",
+        " ▶ SIGUIENTE PASO:",
+        "",
+        f"   1. Abrí {out} en Excel y revisá las columnas 'accion' y 'motivo'.",
+        "   2. Cuando estés conforme, hacé la PRUEBA (tampoco escribe nada):",
+        "",
+        f"   {_invocation()} apply {_ctx_flags(base_ctx)} --plan {out}",
+    ]
+    _guide("✓ PASO 2 DE 3 COMPLETADO — Plan generado", body)
     return 0
 
 
@@ -1816,6 +1962,34 @@ def cmd_apply(args: argparse.Namespace) -> int:
     print(f"Filas en el plan: {len(rows)}")
     print(f"Filas a ejecutar (acciones {sorted(target_actions)}): {len(work)}")
     print(f"dry_run={args.dry_run}")
+
+    if not work:
+        n_over = sum(1 for r in rows if r["accion"] == ACCION_WOULD_OVERWRITE)
+        body = [
+            f" El plan {plan_path} tiene {len(rows)} fila(s), pero ninguna",
+            " requiere acción en este momento.",
+        ]
+        if n_over and not args.allow_update:
+            body += [
+                "",
+                f" Ojo: {n_over} fila(s) cambiarían una nota YA EXISTENTE.",
+                " Por seguridad no se ejecutan salvo que lo pidas explícitamente:",
+                "",
+                f"   {_invocation()} apply {_ctx_flags(base_ctx)} "
+                f"--plan {plan_path} --allow-update --justificacion-codigo 2005",
+                "",
+                " (2005 = 'Error de digitación'. Revisá primero en Excel que",
+                "  esos cambios sean los que querés.)",
+            ]
+        else:
+            body += [
+                "",
+                " Si esperabas que subiera notas, abrí el archivo en Excel y",
+                " mirá la columna 'motivo' de cada fila.",
+            ]
+        body += ["", " 🔒 NO se escribió nada en el sistema de la UNED."]
+        _guide("⚠ No hay nada que ejecutar", body)
+        return 0
 
     # Agrupar por (cu, grupo) para mantener el contexto consistente
     work.sort(key=lambda r: (r["cu"], int(r["grupo"]), r["cedula"], r["instrumento"]))
@@ -1869,7 +2043,227 @@ def cmd_apply(args: argparse.Namespace) -> int:
         print(f"\nResultados escritos en: {out}")
 
     print(f"\n== Resumen ==\nOK:    {ok}\nFAIL:  {len(failed)}")
-    return 0 if not failed else 1
+
+    if args.dry_run:
+        if failed:
+            _guide(
+                "✗ PRUEBA TERMINADA CON ERRORES — no se subió nada",
+                [
+                    f" La prueba falló en {len(failed)} de {len(work)} fila(s).",
+                    "",
+                    f" Mirá la columna 'resultado' en {out} para ver el detalle",
+                    " de cada error antes de volver a intentar.",
+                    "",
+                    " 🔒 NO se escribió nada en el sistema de la UNED.",
+                ],
+            )
+            return 1
+        _guide(
+            "✓ PRUEBA EXITOSA — todavía no se subió nada",
+            [
+                f" Las {ok} filas se procesaron sin errores en modo de prueba.",
+                "",
+                " 🔒 TODAVÍA NO SE ESCRIBIÓ NADA en el sistema de la UNED.",
+                "",
+                " ▶ ÚLTIMO PASO — esto SÍ escribe las notas de verdad:",
+                "",
+                f"   {_invocation()} apply {_ctx_flags(base_ctx)} "
+                f"--plan {plan_path} --commit",
+                "",
+                " (La diferencia es el --commit del final)",
+            ],
+        )
+        return 0
+
+    if failed:
+        _guide(
+            "⚠ PASO 3 DE 3 — Terminado con errores",
+            [
+                f" Se subieron {ok} nota(s) correctamente.",
+                f" Fallaron {len(failed)} fila(s).",
+                "",
+                f" Abrí {out} y filtrá la columna 'resultado' por 'FAIL'",
+                " para ver qué pasó con cada una.",
+                "",
+                " Las filas que fallaron NO se cargaron: podés corregir el",
+                " problema y volver a ejecutar; las que ya están bien se",
+                " detectan como 'skip_already_set' y no se duplican.",
+            ],
+        )
+        return 1
+
+    _guide(
+        "🎉 PASO 3 DE 3 COMPLETADO — Notas cargadas",
+        [
+            f" Se subieron {ok} nota(s) al sistema de Notas Parciales.",
+            "",
+            f" Comprobante: {out}",
+            "",
+            " Podés verificarlo entrando a la página de Captura de Notas,",
+            " o volviendo a generar el plan: las notas ya cargadas van a",
+            " aparecer como 'skip_already_set'.",
+        ],
+    )
+    return 0
+
+
+def cmd_estado(args: argparse.Namespace) -> int:
+    """
+    Dice en qué punto del proceso está el usuario y cuál es el próximo
+    comando. Solo mira archivos locales: no se conecta al servidor, no
+    necesita parámetros y nunca escribe nada.
+    """
+    inv = _invocation()
+    print()
+    print(GUIDE_RULE)
+    print(" ESTADO DEL PROCESO DE CARGA DE NOTAS")
+    print(GUIDE_RULE)
+
+    # --- Paso 0: credenciales -------------------------------------------
+    load_dotenv()
+    tiene_credenciales = bool(
+        os.environ.get("NP_NTLM_USER", "").strip()
+        and os.environ.get("NP_NTLM_PASSWORD", "")
+    )
+    if tiene_credenciales:
+        usuario = os.environ.get("NP_NTLM_USER", "").strip()
+        print(f" ✓ Credenciales configuradas (.env, usuario: {usuario})")
+    else:
+        print(" ✗ Faltan credenciales en el archivo .env")
+
+    # --- Paso 1: cursos verificados -------------------------------------
+    cache = _load_context_cache()
+    cursos = sorted(
+        cache.items(),
+        key=lambda kv: kv[1].get("_guardado", ""),
+        reverse=True,
+    )
+    if cursos:
+        print(f" ✓ Cursos verificados: {len(cursos)}")
+        for key, entry in cursos:
+            asignatura, ano, pac, tipo = key.split("|")
+            cuando = entry.get("_guardado", "fecha desconocida")
+            print(
+                f"     · {asignatura}  (año {ano}, PAC {pac})"
+                f"   verificado el {cuando}"
+            )
+    else:
+        print(" ✗ Ningún curso verificado todavía (falta correr 'probe')")
+
+    # --- Paso 2: plan generado ------------------------------------------
+    plan_path = Path(args.plan)
+    plan_counts: dict[str, int] = {}
+    if plan_path.exists():
+        try:
+            with plan_path.open("r", encoding="utf-8-sig", newline="") as f:
+                for r in csv.DictReader(f):
+                    accion = (r.get("accion") or "").strip()
+                    plan_counts[accion] = plan_counts.get(accion, 0) + 1
+        except OSError:
+            pass
+        total = sum(plan_counts.values())
+        cuando = time.strftime("%Y-%m-%d %H:%M", time.localtime(plan_path.stat().st_mtime))
+        print(f" ✓ Plan generado: {plan_path} ({total} filas, {cuando})")
+        pendientes = (
+            plan_counts.get(ACCION_UPLOAD, 0)
+            + plan_counts.get(ACCION_MARK_NOT_PRESENTED, 0)
+        )
+        print(f"     · {pendientes} fila(s) pendientes de subir")
+    else:
+        print(f" ✗ No hay plan generado ({plan_path} no existe)")
+
+    # --- Paso 3: resultados ---------------------------------------------
+    res_path = plan_path.with_name(plan_path.stem + "_resultados.csv")
+    subidas = 0
+    fallidas = 0
+    pruebas = 0
+    if res_path.exists():
+        try:
+            with res_path.open("r", encoding="utf-8-sig", newline="") as f:
+                for r in csv.DictReader(f):
+                    resultado = (r.get("resultado") or "").strip()
+                    if resultado == "ok":
+                        subidas += 1
+                    elif resultado.startswith("FAIL"):
+                        fallidas += 1
+                    elif resultado == "dry_run":
+                        pruebas += 1
+        except OSError:
+            pass
+        if subidas or fallidas:
+            print(f" ✓ Última carga real: {subidas} subida(s), {fallidas} fallida(s)")
+            print(f"     · Comprobante: {res_path}")
+        elif pruebas:
+            print(f" ✓ Prueba realizada sin errores ({pruebas} fila(s))")
+            print(" ✗ Todavía no se subió ninguna nota al sistema")
+        else:
+            print(f" · Hay un archivo de resultados previo: {res_path}")
+    else:
+        print(" ✗ Todavía no se subió ninguna nota al sistema")
+
+    print(GUIDE_RULE)
+
+    # --- Qué sigue -------------------------------------------------------
+    print(" ▶ SIGUIENTE PASO:")
+    print()
+    if not tiene_credenciales:
+        print("   Abrí el archivo .env y completá NP_NTLM_USER y")
+        print("   NP_NTLM_PASSWORD con tu usuario y contraseña de la UNED.")
+        print("   (Si no existe, copiá .env.example como .env)")
+    elif not cursos:
+        print("   Verificá tu curso con 'probe'. La primera vez hay que pasar")
+        print("   todos los códigos; después quedan guardados. Ejemplo:")
+        print()
+        print(f"   {inv} probe --ano 2026 --pac 4 --escuela 03 --catedra 253 "
+              "--encargado ARODRIGUEZP --tutor 0401780367 --asignatura 03622 "
+              "--cu 81 --grupo 1 --modelo 1")
+    else:
+        key, _ = cursos[0]
+        asignatura, ano, pac, tipo = key.split("|")
+        flags = f"--ano {ano} --pac {pac} --asignatura {asignatura}"
+        if tipo != "O":
+            flags += f" --tipo {tipo}"
+        pendientes = (
+            plan_counts.get(ACCION_UPLOAD, 0)
+            + plan_counts.get(ACCION_MARK_NOT_PRESENTED, 0)
+        )
+        if not plan_path.exists():
+            xlsx = _guess_xlsx()
+            print("   Generá el plan a partir del archivo de Moodle:")
+            print()
+            print(f"   {inv} plan {flags} --xlsx {xlsx or 'calificaciones.xlsx'}")
+        elif pendientes and subidas == 0 and pruebas:
+            print("   Ya hiciste la prueba y salió bien. Este comando SÍ escribe")
+            print("   las notas de verdad en el sistema de la UNED:")
+            print()
+            print(f"   {inv} apply {flags} --plan {plan_path} --commit")
+        elif pendientes and subidas == 0:
+            print(f"   Revisá {plan_path} en Excel y luego hacé la prueba")
+            print("   (la prueba no escribe nada):")
+            print()
+            print(f"   {inv} apply {flags} --plan {plan_path}")
+        elif pendientes:
+            print(f"   Quedan {pendientes} fila(s) sin subir. Volvé a correr:")
+            print()
+            print(f"   {inv} apply {flags} --plan {plan_path}")
+        elif subidas:
+            print("   Todo el plan actual ya fue procesado. Si cargaste notas")
+            print("   nuevas en Moodle, exportá el xlsx otra vez y regenerá el plan:")
+            print()
+            xlsx = _guess_xlsx()
+            print(f"   {inv} plan {flags} --xlsx {xlsx or 'calificaciones.xlsx'}")
+        else:
+            print(f"   El plan {plan_path} no tiene ninguna fila para subir, y")
+            print("   todavía no se cargó nada. Abrí el archivo en Excel y mirá")
+            print("   la columna 'motivo' para entender por qué.")
+            print()
+            print("   Si el plan corresponde a otro curso o período, regeneralo:")
+            print()
+            xlsx = _guess_xlsx()
+            print(f"   {inv} plan {flags} --xlsx {xlsx or 'calificaciones.xlsx'}")
+    print(GUIDE_RULE)
+    print()
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -1931,6 +2325,15 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Segundos entre requests en modo CSV (default 0.5)")
 
     sub = p.add_subparsers(dest="mode", required=True)
+
+    p_estado = sub.add_parser(
+        "estado",
+        help="¿En qué paso voy? Muestra el avance y el próximo comando (no se conecta al servidor)",
+    )
+    p_estado.add_argument(
+        "--plan", default=PLAN_DEFAULT,
+        help=f"Ruta al plan a inspeccionar (default {PLAN_DEFAULT})",
+    )
 
     p_probe = sub.add_parser("probe", help="Verifica auth y descubre instrumentos del modelo")
     _add_context_args(p_probe)
@@ -2002,6 +2405,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run is None:
         args.dry_run = True  # default: no escribe
 
+    if args.mode == "estado":
+        return cmd_estado(args)
     if args.mode == "probe":
         return cmd_probe(args)
     if args.mode == "single":

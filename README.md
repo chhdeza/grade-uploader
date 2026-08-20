@@ -14,6 +14,7 @@ En lugar de cargar notas una por una en el navegador, este script lee las califi
 - [🔑 Configuración de credenciales](#-configuración-de-credenciales)
 - [📊 Formato de archivos de entrada](#-formato-de-archivos-de-entrada)
 - [🛠️ Modos de uso](#️-modos-de-uso)
+  - [🧭 ¿En qué paso voy? (`estado`)](#-modo-estado--en-qué-paso-voy)
 - [✅ Flujo recomendado paso a paso](#-flujo-recomendado-paso-a-paso)
 - [📖 Referencia de parámetros CLI](#-referencia-de-parámetros-cli)
 - [🔒 Seguridad](#-seguridad)
@@ -278,7 +279,14 @@ Columnas opcionales adicionales: `observacion_codigo`, `justificacion`.
 
 ## 🛠️ Modos de uso
 
-El script tiene 5 modos de operación. Los más comunes para carga masiva son **`plan`** + **`apply`**.
+El script tiene 6 modos de operación. Los más comunes para carga masiva son **`plan`** + **`apply`**.
+
+> [!TIP]
+> 🧭 **¿Perdido? ¿No sabés cuál es el próximo comando?** Ejecutá:
+> ```
+> python notasparciales_upload.py estado
+> ```
+> Te dice en qué paso vas y te da el comando exacto que sigue. No se conecta al servidor, no pide parámetros y no escribe nada. **Cada comando además termina indicándote el siguiente**, así que normalmente alcanza con copiar y pegar lo que el script te muestra.
 
 > [!TIP]
 > ⚡ **Flujo simplificado (recomendado):** los parámetros `--escuela`, `--catedra`,
@@ -291,8 +299,7 @@ El script tiene 5 modos de operación. Los más comunes para carga masiva son **
 > `csv`, `plan` y `apply` los completan solos — el comando del día a día queda
 > así de corto:
 > ```bash
-> python notasparciales_upload.py plan --ano 2026 --pac 3 \
->     --asignatura 00883 --xlsx calificaciones_moodle.xlsx
+> python notasparciales_upload.py plan --ano 2026 --pac 3 --asignatura 00883 --xlsx calificaciones_moodle.xlsx
 > ```
 > Además, en modo `plan` ya **no hace falta indicar `--cu-grupo`**: los CU se
 > leen solos de la columna "Institución" del xlsx, y el grupo de cada uno se
@@ -305,6 +312,10 @@ El script tiene 5 modos de operación. Los más comunes para carga masiva son **
 
 ```mermaid
 flowchart TB
+    subgraph ayuda ["🧭 Orientación"]
+        estado["🧭 estado\n¿En qué paso voy?\n¿Qué comando sigue?"]
+    end
+
     subgraph basicos ["🧪 Modos básicos"]
         probe["🔍 probe\nVerificar auth\ny descubrir instrumentos"]
         single["1️⃣ single\nSubir UNA nota\n(para probar)"]
@@ -318,7 +329,45 @@ flowchart TB
 
     probe --> plan
     plan --> apply
+    estado -.-> probe
+    estado -.-> plan
+    estado -.-> apply
 ```
+
+---
+
+### 🧭 Modo `estado` — ¿En qué paso voy?
+
+Si cerraste la terminal, volviste al otro día, o simplemente no sabés qué sigue:
+
+```
+python notasparciales_upload.py estado
+```
+
+**🖥️ Salida de ejemplo:**
+```
+══════════════════════════════════════════════════════════════════════
+ ESTADO DEL PROCESO DE CARGA DE NOTAS
+══════════════════════════════════════════════════════════════════════
+ ✓ Credenciales configuradas (.env, usuario: jperez)
+ ✓ Cursos verificados: 1
+     · 03622  (año 2026, PAC 4)   verificado el 2026-08-19 22:47
+ ✓ Plan generado: notas_plan.csv (60 filas, 2026-08-19 22:48)
+     · 60 fila(s) pendientes de subir
+ ✓ Prueba realizada sin errores (60 fila(s))
+ ✗ Todavía no se subió ninguna nota al sistema
+══════════════════════════════════════════════════════════════════════
+ ▶ SIGUIENTE PASO:
+
+   Ya hiciste la prueba y salió bien. Este comando SÍ escribe
+   las notas de verdad en el sistema de la UNED:
+
+   python notasparciales_upload.py apply --ano 2026 --pac 4 --asignatura 03622 --plan notas_plan.csv --commit
+══════════════════════════════════════════════════════════════════════
+```
+
+> [!NOTE]
+> `estado` **solo mira archivos de tu computadora**: no se conecta al servidor de la UNED, no necesita parámetros y nunca escribe nada. Podés ejecutarlo cuantas veces quieras.
 
 ---
 
@@ -327,11 +376,7 @@ flowchart TB
 Verifica que tus credenciales funcionan y muestra los instrumentos de evaluación del modelo. **Corré esto una vez por curso** con todos los parámetros — si devuelve instrumentos y estudiantes reales, queda guardado para que los demás modos no te los vuelvan a pedir.
 
 ```bash
-python notasparciales_upload.py probe \
-    --ano 2026 --pac 3 --tipo O \
-    --escuela 03 --catedra 253 \
-    --encargado ARODRIGUEZP --tutor 0401780367 \
-    --asignatura 00883 --cu 42 --grupo 1 --modelo 4
+python notasparciales_upload.py probe --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 0401780367 --asignatura 00883 --cu 42 --grupo 1 --modelo 4
 ```
 
 **🖥️ Salida esperada:**
@@ -371,20 +416,13 @@ Ideal para **probar** que todo funciona antes de hacer una carga masiva.
 
 ```bash
 # Primero con --dry-run (NO escribe nada):
-python notasparciales_upload.py single \
-    --ano 2026 --pac 3 --tipo O \
-    --escuela 03 --catedra 253 \
-    --encargado ARODRIGUEZP --tutor 0401780367 \
-    --asignatura 00883 --cu 42 --grupo 1 --modelo 4 \
-    --cedula 0117540192 --instrumento Tar1 --nota 8.9 \
-    --dry-run
+python notasparciales_upload.py single --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 0401780367 --asignatura 00883 --cu 42 --grupo 1 --modelo 4 --cedula 0117540192 --instrumento Tar1 --nota 8.9 --dry-run
 ```
 
 Si todo se ve bien, ejecutá **sin `--dry-run`** (agregando `--commit`):
 
 ```bash
-python notasparciales_upload.py single \
-    ... --commit
+python notasparciales_upload.py single ... --commit
 ```
 
 ---
@@ -392,13 +430,7 @@ python notasparciales_upload.py single \
 ### 📄 Modo `csv` — Subir un CSV con muchas notas
 
 ```bash
-python notasparciales_upload.py csv \
-    --ano 2026 --pac 3 --tipo O \
-    --escuela 03 --catedra 253 \
-    --encargado ARODRIGUEZP --tutor 0401780367 \
-    --asignatura 00883 --cu 42 --grupo 1 --modelo 4 \
-    --upload-csv notas.csv \
-    --dry-run
+python notasparciales_upload.py csv --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 0401780367 --asignatura 00883 --cu 42 --grupo 1 --modelo 4 --upload-csv notas.csv --dry-run
 ```
 
 ---
@@ -410,23 +442,13 @@ Este es el modo **recomendado** para cargas masivas. Lee el xlsx exportado de Mo
 Si ya corriste `probe` para esta asignatura+ano+pac, el comando se reduce a esto — ni `--cu-grupo` hace falta, se autodetecta:
 
 ```bash
-python notasparciales_upload.py plan \
-    --ano 2026 --pac 3 \
-    --asignatura 00883 \
-    --xlsx calificaciones_moodle.xlsx \
-    --output notas_plan.csv
+python notasparciales_upload.py plan --ano 2026 --pac 3 --asignatura 00883 --xlsx calificaciones_moodle.xlsx --output notas_plan.csv
 ```
 
 La primera vez (o si el cache no tiene esta asignatura todavía) pasá todo explícito, igual que antes:
 
 ```bash
-python notasparciales_upload.py plan \
-    --ano 2026 --pac 3 --tipo O \
-    --escuela 03 --catedra 253 \
-    --encargado ARODRIGUEZP --tutor 0401780367 \
-    --asignatura 00883 --modelo 4 \
-    --xlsx calificaciones_moodle.xlsx \
-    --output notas_plan.csv
+python notasparciales_upload.py plan --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 0401780367 --asignatura 00883 --modelo 4 --xlsx calificaciones_moodle.xlsx --output notas_plan.csv
 ```
 
 **¿Cómo se resuelve el CU → grupo si no paso `--cu-grupo`?**
@@ -475,18 +497,10 @@ Ejecuta las acciones del `plan.csv` generado en el paso anterior.
 
 ```bash
 # Primero SIEMPRE en dry-run (con el contexto ya cacheado por probe/plan):
-python notasparciales_upload.py apply \
-    --ano 2026 --pac 3 \
-    --asignatura 00883 \
-    --plan notas_plan.csv \
-    --dry-run
+python notasparciales_upload.py apply --ano 2026 --pac 3 --asignatura 00883 --plan notas_plan.csv --dry-run
 
 # Cuando estés seguro, con --commit:
-python notasparciales_upload.py apply \
-    --ano 2026 --pac 3 \
-    --asignatura 00883 \
-    --plan notas_plan.csv \
-    --commit
+python notasparciales_upload.py apply --ano 2026 --pac 3 --asignatura 00883 --plan notas_plan.csv --commit
 ```
 
 Al terminar, se genera un archivo `notas_plan_resultados.csv` con el estado de cada operación.
@@ -524,34 +538,27 @@ flowchart TD
 
 ### Comandos resumidos
 
+> [!TIP]
+> 🧭 No hace falta memorizar esta secuencia: **cada comando termina mostrándote el siguiente**, ya con tus valores. Y si te perdés, `python notasparciales_upload.py estado` te dice dónde estás parado.
+
 ```bash
+# 0. (En cualquier momento) ¿En qué paso voy?
+python notasparciales_upload.py estado
+
 # 1. Verificar autenticación (con TODOS los parámetros la primera vez —
 #    si sale bien, queda cacheado para los pasos 2-5)
-python notasparciales_upload.py probe \
-    --ano 2026 --pac 3 --tipo O \
-    --escuela 03 --catedra 253 \
-    --encargado ARODRIGUEZP --tutor 0401780367 \
-    --asignatura 00883 --cu 42 --grupo 1 --modelo 4
+python notasparciales_upload.py probe --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 0401780367 --asignatura 00883 --cu 42 --grupo 1 --modelo 4
 
 # 2. Generar plan desde xlsx (CU-grupo se autodetecta solo)
-python notasparciales_upload.py plan \
-    --ano 2026 --pac 3 \
-    --asignatura 00883 \
-    --xlsx calificaciones_moodle.xlsx
+python notasparciales_upload.py plan --ano 2026 --pac 3 --asignatura 00883 --xlsx calificaciones_moodle.xlsx
 
 # 3. Revisar notas_plan.csv en Excel...
 
 # 4. Dry-run del plan
-python notasparciales_upload.py apply \
-    --ano 2026 --pac 3 \
-    --asignatura 00883 \
-    --plan notas_plan.csv --dry-run
+python notasparciales_upload.py apply --ano 2026 --pac 3 --asignatura 00883 --plan notas_plan.csv --dry-run
 
 # 5. Ejecutar de verdad
-python notasparciales_upload.py apply \
-    --ano 2026 --pac 3 \
-    --asignatura 00883 \
-    --plan notas_plan.csv --commit
+python notasparciales_upload.py apply --ano 2026 --pac 3 --asignatura 00883 --plan notas_plan.csv --commit
 ```
 
 ---
@@ -628,6 +635,12 @@ Estos parámetros identifican **exactamente** a qué grupo y modelo de evaluaci�
 | `--plan <ruta>` | Ruta al `plan.csv` generado por el modo `plan`. |
 | `--no-mark-not-presented` | No ejecutar las filas con acción `mark_not_presented`. |
 
+### 🧭 Parámetros específicos del modo `estado`
+
+| Parámetro | Descripción |
+|-----------|-------------|
+| `--plan <ruta>` | Plan a inspeccionar (default `notas_plan.csv`). No requiere ningún otro parámetro. |
+
 ---
 
 ## 🔒 Seguridad
@@ -675,8 +688,7 @@ flowchart LR
 Agregá `-v` (info) o `-vv` (debug) al comando para ver exactamente qué está enviando el script:
 
 ```bash
-python notasparciales_upload.py -vv probe \
-    --ano 2026 --pac 3 ...
+python notasparciales_upload.py -vv probe --ano 2026 --pac 3 ...
 ```
 
 El modo debug muestra cada request HTTP, los payloads JSON enviados, y las respuestas del servidor.
