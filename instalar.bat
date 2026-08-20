@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 title Grade Uploader - Instalacion
 echo.
 echo Iniciando instalacion de Grade Uploader...

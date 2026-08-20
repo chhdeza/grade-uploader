@@ -12,34 +12,28 @@ recargar fila) son POST a `CapturaNotas.aspx/<webMethod>` con bodies JSON.
 
 Autenticación
 -------------
-Para evitar tener que reproducir el SSO institucional, este script usa el
-patrón "bring-your-own-cookies": vos te logueás normalmente en el navegador,
-copiás las 3 cookies de sesión a `.env`, y el script las usa.
+El script utiliza autenticación NTLM contra IIS con las credenciales
+NP_NTLM_USER y NP_NTLM_PASSWORD.
 
-Cookies en `.env`:
-    NP_COOKIE_ASPNET_SESSIONID
-    NP_COOKIE_UZMX
-    NP_COOKIE_UZMXJ
-
-Las cookies expiran en horas. Si el script falla con HTTP 200 + redirect a
-login en la respuesta, hay que refrescar las cookies.
+Después de autenticarse, requests mantiene automáticamente las cookies
+ASP.NET e Imperva necesarias para la sesión.
 
 Modos de uso
 ------------
 1. Verificar autenticación y descubrir contexto (curso/grupo/instrumentos):
-       python notasparciales_upload.py --probe \
+       python notasparciales_upload.py probe \
            --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 \
            --encargado ARODRIGUEZP --tutor 0401780367 \
            --asignatura 00883 --cu 42 --grupo 1 --modelo 4
 
 2. Subir UNA nota de prueba (siempre con --dry-run primero):
-       python notasparciales_upload.py --single \
+       python notasparciales_upload.py --dry-run single \
            --cedula 0117540192 --instrumento Tar1 --nota 8.9 \
-           --ano 2026 --pac 3 --tipo O ... --dry-run
+           --ano 2026 --pac 3 --tipo O ... 
 
 3. Subir un CSV (formato: cedula,instrumento,nota[,observacion_codigo]):
-       python notasparciales_upload.py --upload-csv notas.csv \
-           --ano 2026 --pac 3 --tipo O ... --dry-run
+       python notasparciales_upload.py --dry-run upload-csv notas.csv \
+           --ano 2026 --pac 3 --tipo O ...
 
 Filosofía
 ---------
@@ -66,11 +60,10 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
-from urllib import response
-
+from typing import Any
 import requests
 from dotenv import load_dotenv
+
 
 
 # ---------------------------------------------------------------------------
@@ -78,21 +71,10 @@ from dotenv import load_dotenv
 # ---------------------------------------------------------------------------
 BASE = "https://produccion.uned.ac.cr/notasparciales"
 PAGE = f"{BASE}/Formularios/CapturaNotas.aspx"
-ORIGIN = "https://produccion.uned.ac.cr"
-
-# Headers que el navegador siempre envía en cada PageMethod call.
 COMMON_HEADERS = {
-    "Accept": "application/json, text/javascript, */*; q=0.01",
     "Content-Type": "application/json; charset=utf-8",
+    "Accept": "application/json, text/javascript, */*; q=0.01",
     "X-Requested-With": "XMLHttpRequest",
-    "Origin": ORIGIN,
-    "Referer": PAGE,
-    "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-    # Imitar Firefox 150 (lo que aparece en el HAR del usuario)
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:150.0) "
-        "Gecko/20100101 Firefox/150.0"
-    ),
 }
 
 # `_peTipo` para el endpoint funCodigoDescripcion (combo loader genérico).
@@ -184,8 +166,6 @@ class NotasParcialesClient:
     """Cliente de bajo nivel para los PageMethods de CapturaNotas.aspx."""
     def __init__(self, auth: Auth, *, timeout: float = 30.0):
         self.auth = auth
-        self.session = requests.Session()
-        self.session.headers.update(COMMON_HEADERS)
         self.timeout = timeout
 
         if not auth.ntlm_user or not auth.ntlm_password:
@@ -197,7 +177,7 @@ class NotasParcialesClient:
 # ---------------------------------------------------------------------------
 # Login al sitio de notas parciales
 # ------------------------------------------------------------------------
-    def login(self, url: str) -> None:
+    def login(self) -> None:
         """
         Autentica contra Notas Parciales usando NTLM y obtiene
         automáticamente la sesión ASP.NET.
@@ -219,16 +199,6 @@ class NotasParcialesClient:
         # =========================================================
         # CONFIGURACIÓN
         # =========================================================
-
-        notasparciales_url = (
-            f"{ORIGIN}/notasparciales/"
-        )
-
-        captura_url = (
-            f"{ORIGIN}/notasparciales/"
-            "Formularios/CapturaNotas.aspx"
-        )
-
         usuario = self.auth.ntlm_user.strip()
         password = self.auth.ntlm_password
 
@@ -269,17 +239,12 @@ class NotasParcialesClient:
             "Connection": "keep-alive",
         })
 
-        self.timeout = 30.0
-
         # =========================================================
-        # 1. AUTENTICACIÓN NTLM
+        # AUTENTICACIÓN NTLM en https://produccion.uned.ac.cr/notasparciales/?direccion2=usuario
         # =========================================================
 
         # construimos el url con todo y parametros que incluye el usuario direccion2 debe ser el usuario NTLM
-        entrada_url = (
-            f"{notasparciales_url}"
-            f"?direccion2={usuario}"
-        )
+        entrada_url = f"{BASE}/?direccion2={usuario}"
         #Llamamos el URL 
         try:
             respuesta = self.session.get(
@@ -312,20 +277,17 @@ class NotasParcialesClient:
 
 
         # =========================================================
-        # 4. PEDIR CapturaNotas.aspx
+        # PEDIR pagina https://produccion.uned.ac.cr/notasparciales/Formularios/CapturaNotas.aspx
         # =========================================================
         try:
-            captura = self.session.get(
-                captura_url,
-                timeout=(10, 30),
-                allow_redirects=True,
+            self.session.get(
+            PAGE,
+            timeout=(10, 30),
+            allow_redirects=True,
             )
 
         except requests.exceptions.Timeout as ex:
-            print(
-                "\n<<< TIMEOUT",
-                flush=True,
-            )
+            logger.error("Timeout al abrir CapturaNotas.aspx")
 
             raise RuntimeError(
                 "La petición a CapturaNotas.aspx "
@@ -338,36 +300,7 @@ class NotasParcialesClient:
             ) from ex
 
         # =========================================================
-        # 8. GUARDAR INFORMACIÓN PARA EL RESTO DEL CLIENTE
-        # =========================================================
-
-        self.auth.aspnet_sessionid = (
-            self.session.cookies.get(
-                "ASP.NET_SessionId",
-                ""
-            )
-        )
-
-        # Estas cookies ya NO se piden al usuario.
-        # Si el servidor las genera, quedan disponibles
-        # automáticamente en self.session.cookies.
-
-        self.auth.uzmx = (
-            self.session.cookies.get(
-                "uzmx",
-                ""
-            )
-        )
-
-        self.auth.uzmxj = (
-            self.session.cookies.get(
-                "uzmxj",
-                ""
-            )
-        )
-
-        # =========================================================
-        # 9. ÉXITO
+        # 9. Proceso de autenticación completado. La sesión ASP.NET está lista para usar.
         # =========================================================
 
         print()
@@ -386,9 +319,7 @@ class NotasParcialesClient:
         url = f"{PAGE}/{method}"
 
         headers = {
-            "Content-Type": "application/json; charset=utf-8",
-            "Accept": "application/json, text/javascript, */*; q=0.01",
-            "X-Requested-With": "XMLHttpRequest",
+            **COMMON_HEADERS,
             "Referer": PAGE,
         }
 
@@ -422,9 +353,8 @@ class NotasParcialesClient:
             url,
             data=body.encode("utf-8"),
             headers={
-                "Content-Type": "application/json; charset=utf-8",
-                "Accept": "application/json, text/javascript, */*; q=0.01",
-                "X-Requested-With": "XMLHttpRequest",
+                **COMMON_HEADERS,
+                "Referer": PAGE,
             },
             timeout=self.timeout,
         )
@@ -690,9 +620,6 @@ class NotasParcialesClient:
 def _load_auth_and_context_from_env(args: argparse.Namespace) -> tuple[Auth, Context]:
     load_dotenv()
     auth = Auth(
-        #aspnet_sessionid=os.environ.get("NP_COOKIE_ASPNET_SESSIONID", "").strip(),
-        #uzmx=os.environ.get("NP_COOKIE_UZMX", "").strip(),
-        #uzmxj=os.environ.get("NP_COOKIE_UZMXJ", "").strip(),
         ntlm_user=os.environ.get("NP_NTLM_USER", "").strip(),
         ntlm_password=os.environ.get("NP_NTLM_PASSWORD", ""),
     )
@@ -745,10 +672,7 @@ def cmd_probe(args: argparse.Namespace) -> int:
     auth, ctx = _load_auth_and_context_from_env(args)
 
     client = NotasParcialesClient(auth)
-    client.login(
-        "{BASE}"
-        f"?direccion2={auth.ntlm_user}"
-    )
+    client.login()
 
     print(
         f"\n== Nota mínima para "
@@ -951,10 +875,7 @@ def _upload_one(
 def cmd_single(args: argparse.Namespace) -> int:
     auth, ctx = _load_auth_and_context_from_env(args)
     client = NotasParcialesClient(auth)
-    client.login(
-                "{BASE}"
-                f"?direccion2={auth.ntlm_user}"
-            )
+    client.login()
     _detect_session_dead(client)
 
     logger.info("Subiendo: cedula=%s instrumento=%s nota=%s dry_run=%s",
@@ -980,10 +901,7 @@ def cmd_single(args: argparse.Namespace) -> int:
 def cmd_upload_csv(args: argparse.Namespace) -> int:
     auth, ctx = _load_auth_and_context_from_env(args)
     client = NotasParcialesClient(auth)
-    client.login(
-                "{BASE}"
-                f"?direccion2={auth.ntlm_user}"
-            )
+    client.login()
     _detect_session_dead(client)
 
     csv_path = Path(args.upload_csv)
@@ -1076,17 +994,18 @@ def _parse_xlsx(path: Path) -> tuple[list[str], list[list[Any]]]:
         raise SystemExit(
             "openpyxl no está instalado. Corré:  pip install openpyxl"
         )
-    wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
-    ws = wb[wb.sheetnames[0]]
-    rows = list(ws.iter_rows(values_only=True))
-    if not rows:
-        raise SystemExit(f"{path.name}: archivo vacío")
-    headers = [str(h) if h is not None else "" for h in rows[0]]
-    return headers, [list(r) for r in rows[1:]]
-
+    try:
+        wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+        ws = wb[wb.sheetnames[0]]
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            raise SystemExit(f"{path.name}: archivo vacío")
+        headers = [str(h) if h is not None else "" for h in rows[0]]
+        return headers, [list(r) for r in rows[1:]]
+    finally:
+        wb.close()
 
 _INSTITUCION_RE = re.compile(r"\((\d{2,3})\)\s*$")
-
 
 def _extract_cu_from_institucion(value: str) -> str | None:
     """De 'SAN JOSE (01)' devuelve '01'."""
@@ -1597,12 +1516,7 @@ def _write_plan_csv(plan: list[PlanRow], path: Path) -> None:
 def cmd_plan(args: argparse.Namespace) -> int:
     auth, base_ctx = _load_auth_and_context_from_env(args)
     client = NotasParcialesClient(auth)
-
-    client.login(
-        "{BASE}"
-        f"?direccion2={auth.ntlm_user}"
-    )
-
+    client.login()
     _detect_session_dead(client)
 
     xlsx_paths = [Path(p) for p in args.xlsx]
@@ -1688,10 +1602,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
 def cmd_apply(args: argparse.Namespace) -> int:
     auth, base_ctx = _load_auth_and_context_from_env(args)
     client = NotasParcialesClient(auth)
-    client.login(
-            "{BASE}"
-            f"?direccion2={auth.ntlm_user}"
-        )
+    client.login()
     _detect_session_dead(client)
 
     plan_path = Path(args.plan)
@@ -1802,7 +1713,7 @@ def _add_context_args(p: argparse.ArgumentParser, *, cu_grupo_required: bool = T
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="notasparciales_upload",
-        description="Sube notas a UNED Notas Parciales (sistema oficial). Auth por cookies (.env).",
+        description="Sube notas a UNED Notas Parciales. Auth NTLM mediante .env.",
     )
     p.add_argument("-v", "--verbose", action="count", default=0, help="-v info, -vv debug")
     p.add_argument("--dry-run", action="store_true", default=None,
