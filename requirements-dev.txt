@@ -1,0 +1,7 @@
+# Sólo para revisar el código; nada de esto hace falta para usar el programa.
+#
+# Fijado exacto y no con `>=`: una versión nueva de ruff puede traer reglas
+# nuevas dentro de las familias ya seleccionadas y poner el CI en rojo sin que
+# nadie haya tocado el guion. Dependabot mueve este pin y abre un PR que el
+# propio CI verifica antes de que nadie lo mergee.
+ruff==0.16.4
