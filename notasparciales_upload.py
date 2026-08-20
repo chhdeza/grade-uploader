@@ -140,7 +140,7 @@ class Auth:
     está logueado y qué grupo/curso está viendo).
     """
 
-    ntlm_user: str = ""        # ej. "chernandeza"
+    ntlm_user: str = ""        # ej. "jperez"
     ntlm_password: str = ""    # password del SSO UNED
 
 
@@ -734,7 +734,7 @@ def _load_auth_and_context_from_env(args: argparse.Namespace) -> tuple[Auth, Con
         raise SystemExit(
             "Faltan credenciales NTLM en .env: NP_NTLM_USER y/o NP_NTLM_PASSWORD.\n"
             "El sitio /notasparciales/ exige autenticación NTLM ANTES de aceptar cookies.\n"
-            "Usá tu username del SSO UNED (ej. `chernandeza`, NO la cédula) y tu password.\n"
+            "Usá tu username del SSO UNED (ej. `jperez`, NO la cédula) y tu password.\n"
             "Ver .env.example."
         )
 
