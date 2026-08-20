@@ -501,6 +501,29 @@ Columnas opcionales adicionales: `observacion_codigo`, `justificacion`.
 
 El script tiene 5 modos de operación. Los más comunes para carga masiva son **`plan`** + **`apply`**.
 
+> [!TIP]
+> ⚡ **Flujo simplificado (recomendado):** los parámetros `--escuela`, `--catedra`,
+> `--encargado`, `--tutor` y `--modelo` son códigos internos del sistema que
+> cuesta recordar y son fáciles de escribir mal (un solo dígito trocado y el
+> servidor devuelve "0 estudiantes" sin ningún error). **Solo hace falta
+> pasarlos una vez**, en un `probe` exitoso: el script confirma que devuelven
+> datos reales y los guarda en `.notasparciales_context.json`, agrupados por
+> `--asignatura` + `--ano` + `--pac` + `--tipo`. De ahí en adelante, `single`,
+> `csv`, `plan` y `apply` los completan solos — el comando del día a día queda
+> así de corto:
+> ```bash
+> python notasparciales_upload.py plan --ano 2026 --pac 3 \
+>     --asignatura 00883 --xlsx calificaciones_moodle.xlsx
+> ```
+> Además, en modo `plan` ya **no hace falta indicar `--cu-grupo`**: los CU se
+> leen solos de la columna "Institución" del xlsx, y el grupo de cada uno se
+> autodetecta contra el servidor (probando `grupo=1..15`, sin escribir nada, y
+> quedándose con el que tenga estudiantes cuya cédula coincide con el xlsx).
+> `--cu-grupo CU=GRUPO` sigue existiendo por si necesitás forzar un valor
+> manualmente. El archivo de cache **no tiene credenciales** — solo códigos de
+> curso — pero igual queda fuera de Git vía `.gitignore`, junto con el
+> `.xlsx` y los `plan.csv`, porque contienen datos de estudiantes.
+
 ```mermaid
 flowchart TB
     subgraph basicos ["🧪 Modos básicos"]
@@ -520,9 +543,9 @@ flowchart TB
 
 ---
 
-### 🔍 Modo `probe` — Verificar conexión
+### 🔍 Modo `probe` — Verificar conexión (y guardar el contexto)
 
-Verifica que tus credenciales funcionan y muestra los instrumentos de evaluación del modelo.
+Verifica que tus credenciales funcionan y muestra los instrumentos de evaluación del modelo. **Corré esto una vez por curso** con todos los parámetros — si devuelve instrumentos y estudiantes reales, queda guardado para que los demás modos no te los vuelvan a pedir.
 
 ```bash
 python notasparciales_upload.py probe \
@@ -534,8 +557,9 @@ python notasparciales_upload.py probe \
 
 **🖥️ Salida esperada:**
 ```
-== Probando autenticación ==
-OK: cookies válidas, el sistema está abierto.
+========================================
+AUTENTICACIÓN EXITOSA
+========================================
 
 == Nota mínima para 00883 ==
 Nota mínima de aprobación: 7
@@ -549,10 +573,16 @@ Mapeo Codigo -> Nombre del instrumento:
 
 == Cargando tabla del grupo (resumen) ==
 Estudiantes en el grupo: 25
+
+✓ Contexto guardado en .notasparciales_context.json para --asignatura 00883
+  (ano=2026 pac=3 tipo=O). Las próximas corridas de plan/apply/single/csv
+  pueden omitir --escuela/--catedra/--encargado/--tutor/--modelo.
 ```
 
 > [!TIP]
-> 💡 **Siempre empezá con `probe`** para confirmar que las cookies y credenciales funcionan antes de hacer cualquier otra operación.
+> 💡 **Siempre empezá con `probe`** para confirmar que las credenciales funcionan antes de hacer cualquier otra operación.
+>
+> Si en cambio ves **"⚠ ADVERTENCIA: 0 estudiantes"** o **"ningún instrumento de evaluación"**, la sesión sí se autenticó — el problema es que algún parámetro (`--asignatura`, `--modelo`, `--cu` o `--grupo`) no corresponde a un grupo real. El servidor no da error en ese caso, simplemente devuelve tablas vacías, así que si ves eso revisá los valores contra los dropdowns de la página antes de asumir que el script está roto.
 
 ---
 
@@ -598,6 +628,18 @@ python notasparciales_upload.py csv \
 
 Este es el modo **recomendado** para cargas masivas. Lee el xlsx exportado de Moodle, consulta el estado actual del servidor, y genera un `plan.csv` que podés revisar antes de ejecutar.
 
+Si ya corriste `probe` para esta asignatura+ano+pac, el comando se reduce a esto — ni `--cu-grupo` hace falta, se autodetecta:
+
+```bash
+python notasparciales_upload.py plan \
+    --ano 2026 --pac 3 \
+    --asignatura 00883 \
+    --xlsx calificaciones_moodle.xlsx \
+    --output notas_plan.csv
+```
+
+La primera vez (o si el cache no tiene esta asignatura todavía) pasá todo explícito, igual que antes:
+
 ```bash
 python notasparciales_upload.py plan \
     --ano 2026 --pac 3 --tipo O \
@@ -605,15 +647,20 @@ python notasparciales_upload.py plan \
     --encargado ARODRIGUEZP --tutor 0401780367 \
     --asignatura 00883 --modelo 4 \
     --xlsx calificaciones_moodle.xlsx \
-    --cu-grupo 42=1 --cu-grupo 01=2 \
     --output notas_plan.csv
 ```
 
-**¿Qué significa `--cu-grupo 42=1 --cu-grupo 01=2`?**
+**¿Cómo se resuelve el CU → grupo si no paso `--cu-grupo`?**
 
-Mapea cada centro universitario (CU) al número de grupo en Notas Parciales:
-- `42=1` → CU 42 (Desamparados) = Grupo 1
-- `01=2` → CU 01 (San José) = Grupo 2
+Los CU se extraen solos de la columna "Institución" del xlsx (ej. `"DESAMPARADOS (42)"` → CU `42`). Para cada uno, el script prueba `grupo=1..15` contra el servidor (solo lectura) y se queda con el grupo cuyo roster tenga cédulas que coinciden con las del xlsx para ese CU. Si no encuentra ninguna coincidencia, te lo dice explícitamente en la consola en vez de fallar en silencio, y podés forzarlo a mano:
+
+```bash
+--cu-grupo 42=1 --cu-grupo 01=2
+```
+- `42=1` → CU 42 (Desamparados) = Grupo 1 (forzado, no se autodetecta)
+- `01=2` → CU 01 (San José) = Grupo 2 (forzado, no se autodetecta)
+
+Cualquier CU que no pases explícito en `--cu-grupo` se autodetecta; podés mezclar ambos (algunos forzados, el resto automático).
 
 **📄 El plan.csv generado contiene:**
 
@@ -648,21 +695,17 @@ Mapea cada centro universitario (CU) al número de grupo en Notas Parciales:
 Ejecuta las acciones del `plan.csv` generado en el paso anterior.
 
 ```bash
-# Primero SIEMPRE en dry-run:
+# Primero SIEMPRE en dry-run (con el contexto ya cacheado por probe/plan):
 python notasparciales_upload.py apply \
-    --ano 2026 --pac 3 --tipo O \
-    --escuela 03 --catedra 253 \
-    --encargado ARODRIGUEZP --tutor 0401780367 \
-    --asignatura 00883 --modelo 4 \
+    --ano 2026 --pac 3 \
+    --asignatura 00883 \
     --plan notas_plan.csv \
     --dry-run
 
 # Cuando estés seguro, con --commit:
 python notasparciales_upload.py apply \
-    --ano 2026 --pac 3 --tipo O \
-    --escuela 03 --catedra 253 \
-    --encargado ARODRIGUEZP --tutor 0401780367 \
-    --asignatura 00883 --modelo 4 \
+    --ano 2026 --pac 3 \
+    --asignatura 00883 \
     --plan notas_plan.csv \
     --commit
 ```
@@ -703,38 +746,32 @@ flowchart TD
 ### Comandos resumidos
 
 ```bash
-# 1. Verificar autenticación
+# 1. Verificar autenticación (con TODOS los parámetros la primera vez —
+#    si sale bien, queda cacheado para los pasos 2-5)
 python notasparciales_upload.py probe \
     --ano 2026 --pac 3 --tipo O \
     --escuela 03 --catedra 253 \
     --encargado ARODRIGUEZP --tutor 0401780367 \
     --asignatura 00883 --cu 42 --grupo 1 --modelo 4
 
-# 2. Generar plan desde xlsx
+# 2. Generar plan desde xlsx (CU-grupo se autodetecta solo)
 python notasparciales_upload.py plan \
-    --ano 2026 --pac 3 --tipo O \
-    --escuela 03 --catedra 253 \
-    --encargado ARODRIGUEZP --tutor 0401780367 \
-    --asignatura 00883 --modelo 4 \
-    --xlsx calificaciones_moodle.xlsx \
-    --cu-grupo 42=1 --cu-grupo 01=2
+    --ano 2026 --pac 3 \
+    --asignatura 00883 \
+    --xlsx calificaciones_moodle.xlsx
 
 # 3. Revisar notas_plan.csv en Excel...
 
 # 4. Dry-run del plan
 python notasparciales_upload.py apply \
-    --ano 2026 --pac 3 --tipo O \
-    --escuela 03 --catedra 253 \
-    --encargado ARODRIGUEZP --tutor 0401780367 \
-    --asignatura 00883 --modelo 4 \
+    --ano 2026 --pac 3 \
+    --asignatura 00883 \
     --plan notas_plan.csv --dry-run
 
 # 5. Ejecutar de verdad
 python notasparciales_upload.py apply \
-    --ano 2026 --pac 3 --tipo O \
-    --escuela 03 --catedra 253 \
-    --encargado ARODRIGUEZP --tutor 0401780367 \
-    --asignatura 00883 --modelo 4 \
+    --ano 2026 --pac 3 \
+    --asignatura 00883 \
     --plan notas_plan.csv --commit
 ```
 
@@ -771,16 +808,18 @@ Estos parámetros identifican **exactamente** a qué grupo y modelo de evaluaci�
 | `--ano` | texto | ✅ | Año académico | `2026` |
 | `--pac` | texto | ✅ | Período académico (cuatrimestre) | `3` |
 | `--tipo` | texto | ❌ | Tipo de matrícula (default: `O` = Ordinaria) | `O` |
-| `--escuela` | texto | ✅ | Código de escuela | `03` |
-| `--catedra` | entero | ✅ | ID numérico de cátedra | `253` |
-| `--encargado` | texto | ✅ | Username del encargado de cátedra | `ARODRIGUEZP` |
-| `--tutor` | texto | ✅ | Cédula del tutor | `0401780367` |
-| `--asignatura` | texto | ✅ | Sigla del curso | `00883` |
-| `--cu` | texto | ✅* | Código del centro universitario | `42` |
-| `--grupo` | entero | ✅* | Número de grupo | `1` |
-| `--modelo` | entero | ✅ | Modelo de evaluación | `4` |
+| `--asignatura` | texto | ✅ | Sigla del curso (también es la clave del cache) | `00883` |
+| `--escuela` | texto | ✅¹ | Código de escuela | `03` |
+| `--catedra` | entero | ✅¹ | ID numérico de cátedra | `253` |
+| `--encargado` | texto | ✅¹ | Username del encargado de cátedra | `ARODRIGUEZP` |
+| `--tutor` | texto | ✅¹ | Cédula del tutor | `0401780367` |
+| `--modelo` | entero | ✅¹ | Modelo de evaluación | `4` |
+| `--cu` | texto | ✅² | Código del centro universitario | `42` |
+| `--grupo` | entero | ✅² | Número de grupo | `1` |
 
-> *En los modos `plan` y `apply`, `--cu` y `--grupo` no son requeridos porque se infieren del xlsx y del parámetro `--cu-grupo`.
+> ¹ `--escuela`/`--catedra`/`--encargado`/`--tutor`/`--modelo` solo son obligatorios si no hay un cache guardado para esta `--asignatura`+`--ano`+`--pac`+`--tipo` (ver `.notasparciales_context.json`, generado por un `probe` exitoso). Si los pasás explícitos, tienen prioridad sobre el cache.
+>
+> ² En los modos `plan` y `apply`, `--cu` y `--grupo` no son requeridos porque se infieren del xlsx (CU) y se autodetectan contra el servidor (grupo), salvo que los fuerces con `--cu-grupo`.
 
 ### 🔧 Parámetros de control
 
@@ -799,7 +838,7 @@ Estos parámetros identifican **exactamente** a qué grupo y modelo de evaluaci�
 | Parámetro | Descripción |
 |-----------|-------------|
 | `--xlsx <ruta>` | Ruta al xlsx exportado de Moodle. Se puede repetir para varios archivos. |
-| `--cu-grupo <CU=GRUPO>` | Mapeo CU → grupo. Repetible. Ej: `--cu-grupo 42=1 --cu-grupo 01=2` |
+| `--cu-grupo <CU=GRUPO>` | **Opcional.** Fuerza el grupo de un CU en vez de autodetectarlo. Repetible. Ej: `--cu-grupo 42=1 --cu-grupo 01=2` |
 | `--map <COL=CODIGO>` | Mapeo manual de columna del xlsx a código de instrumento. Ej: `--map 'Tarea: Entrega Actividad Proyecto Final (Real)=Proy1'` |
 | `--output <ruta>` | Ruta al CSV de salida (default: `notas_plan.csv`). |
 
@@ -847,6 +886,9 @@ flowchart LR
 | 8 | `"openpyxl no está instalado"` | Falta la dependencia para leer xlsx | Ejecutá `pip install openpyxl` (o re-ejecutá `instalar.bat`) |
 | 9 | `"Falta la dependencia requests-ntlm"` | Falta la dependencia para autenticación NTLM | Ejecutá `pip install requests-ntlm` (o re-ejecutá `instalar.bat`) |
 | 10 | El plan dice `"SIN MAPEO"` para una columna | El script no pudo asociar la columna del xlsx con un instrumento del servidor | Usá `--map 'Nombre Columna (Real)=Tar1'` para forzar el mapeo manualmente |
+| 11 | `⚠ ADVERTENCIA: 0 estudiantes` / `ningún instrumento` en `probe` o `plan`, pero la autenticación fue exitosa | Algún código de contexto no corresponde a un grupo real (`--asignatura`, `--modelo`, `--cu`, `--grupo` o `--pac`). El servidor no da error en ese caso, simplemente devuelve tablas vacías | Revisá esos valores contra los dropdowns de la página. **No** es un problema de login/`.env` si la autenticación salió "EXITOSA" |
+| 12 | `"Leídos 0 registros"` / `"Columnas de nota detectadas: []"` en `plan` | El xlsx no tiene columnas con `(Real)`/`(Porcentaje)` — es un export "simple" de Moodle con columnas de nota sin sufijo | Ya soportado: cualquier columna que no sea `Nombre`/`Apellido(s)`/`Número de ID`/`Institución` (ni un campo conocido no-nota) se trata como columna de nota. Si igual da 0, revisá que el xlsx tenga esas 4 columnas exactas |
+| 13 | `"CU=X: no se pudo detectar el grupo automáticamente"` en `plan` | Se probó `grupo=1..15` para ese CU y ninguno tuvo cédulas del xlsx en común | Puede ser que el grupo real sea >15, o que esos estudiantes del xlsx todavía no estén matriculados oficialmente en ese CU/asignatura/pac. Forzalo con `--cu-grupo CU=N` si conocés el valor correcto |
 
 <details>
 <summary>🔍 <strong>¿Cómo activar el modo verbose para más detalle?</strong></summary>
