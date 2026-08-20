@@ -11,6 +11,7 @@ En lugar de cargar notas una por una en el navegador, este script lee las califi
 - [🔭 Vista general](#-vista-general)
 - [⚙️ Requisitos previos](#️-requisitos-previos)
 - [🚀 Instalación](#-instalación)
+  - [🩺 Si el instalador falla](#-si-el-instalador-falla)
 - [🔑 Configuración de credenciales](#-configuración-de-credenciales)
 - [📊 Formato de archivos de entrada](#-formato-de-archivos-de-entrada)
 - [🛠️ Modos de uso](#️-modos-de-uso)
@@ -85,13 +86,13 @@ flowchart TB
 
 | Requisito | Detalle |
 |-----------|--------|
-| 💻 **Sistema operativo** | Windows 10 o Windows 11 |
-| 🐍 **Python 3.10+** | Solo si NO vas a usar el ejecutable `.exe` |
+| 💻 **Sistema operativo** | Windows 10 o Windows 11 (incluyen PowerShell, que usa el instalador) |
+| 🐍 **Python 3.10+** | Solo si NO vas a usar el ejecutable `.exe`. Al instalarlo, marcá *"Add Python to PATH"* |
 | 🌐 **Cuenta SSO UNED** | Con acceso al sistema de Notas Parciales |
-| 📶 **Conexión a internet** | Para comunicarse con el servidor de la UNED |
+| 📶 **Conexión a internet** | Para instalar las dependencias y para comunicarse con el servidor de la UNED |
 
 > [!TIP]
-> Si no tenés Python instalado y no querés instalarlo, podés generar un **ejecutable `.exe`** que incluye todo lo necesario. Vea la sección [🚀 Instalación — Opción B](#opción-b--ejecutable-exe-sin-python).
+> Si no tenés Python instalado y no querés instalarlo, podés generar un **ejecutable `.exe`** que incluye todo lo necesario. Vea la sección [🚀 Instalación — Opción B](#opción-b---ejecutable-exe-sin-python).
 
 ---
 
@@ -106,19 +107,32 @@ git clone https://github.com/chhdeza/grade-uploader.git
 cd grade-uploader
 ```
 
-2️⃣ Ejecutá el instalador:
+2️⃣ Ejecutá el instalador (doble click en el archivo, o escribiendo su nombre en la terminal):
 
 ```
 instalar.bat
 ```
 
-Esto automáticamente:
-- ✅ Verifica que Python esté instalado
-- ✅ Crea un entorno virtual (`.venv`)
-- ✅ Instala las dependencias
-- ✅ Crea el archivo `.env` desde la plantilla
+Esto hace 5 cosas automáticamente:
 
-3️⃣ Configurá las credenciales en el archivo `.env` (ver [🔑 Configuración de credenciales](#-configuración-de-credenciales)).
+| Paso | Qué hace |
+|------|----------|
+| `[1/5]` | Verifica que tengas Python 3.10 o superior (y te dice cómo instalarlo si no) |
+| `[2/5]` | Crea un entorno virtual (`.venv`) para no ensuciar tu Python del sistema |
+| `[3/5]` | Instala las dependencias del proyecto |
+| `[4/5]` | Crea tu archivo `.env` a partir de la plantilla (no lo sobrescribe si ya existe) |
+| `[5/5]` | Verifica que todo quedó funcionando de verdad |
+
+3️⃣ Abrí el archivo `.env` con el Bloc de notas y completá tu usuario y contraseña de la UNED (ver [🔑 Configuración de credenciales](#-configuración-de-credenciales)).
+
+4️⃣ Ejecutá este comando: te va a decir en qué paso estás y cuál es el siguiente.
+
+```
+.venv\Scripts\python.exe notasparciales_upload.py estado
+```
+
+> [!IMPORTANT]
+> 💡 **Usá siempre `.venv\Scripts\python.exe` en lugar de `python` a secas.** Así no hace falta "activar el entorno virtual" en cada terminal nueva — un paso que además puede fallar si Windows tiene restringida la ejecución de scripts.
 
 ---
 
@@ -138,11 +152,13 @@ Esto genera `notasparciales_upload.exe` en la carpeta raíz. Después:
    - `notasparciales_upload.exe`
    - `.env` (con las credenciales ya configuradas)
 
-2️⃣ Ejecutá desde la línea de comandos:
+2️⃣ Ejecutá desde la línea de comandos. Empezá por `estado`, que te va a indicar el siguiente paso:
 
 ```
-notasparciales_upload.exe probe --ano 2026 --pac 3 ...
+notasparciales_upload.exe estado
 ```
+
+Con el `.exe` los comandos son idénticos a los de este README, solo cambia el principio: donde dice `python notasparciales_upload.py`, escribí `notasparciales_upload.exe`.
 
 > [!NOTE]
 > El `.exe` pesa aproximadamente 15-25 MB porque incluye Python y todas las dependencias empaquetadas.
@@ -151,19 +167,37 @@ notasparciales_upload.exe probe --ano 2026 --pac 3 ...
 
 ### Opción C — 🔧 Instalación manual
 
-```bash
-# Crear entorno virtual
+```bat
+REM Crear entorno virtual
 python -m venv .venv
 
-# Activar el entorno virtual
-.venv\Scripts\activate
+REM Instalar dependencias (sin necesidad de activar nada)
+.venv\Scripts\pip.exe install -r requirements.txt
 
-# Instalar dependencias
-pip install -r requirements.txt
-
-# Crear archivo de configuración
+REM Crear archivo de configuración
 copy .env.example .env
+
+REM Verificar que quedó bien
+.venv\Scripts\python.exe notasparciales_upload.py estado
 ```
+
+> [!TIP]
+> No hace falta `activate`: llamando directamente a `.venv\Scripts\pip.exe` y `.venv\Scripts\python.exe` se usa el entorno virtual igual, y funciona aunque Windows tenga restringida la ejecución de scripts de PowerShell.
+
+---
+
+### 🩺 Si el instalador falla
+
+| 🚨 Síntoma | 💡 Causa | ✅ Solución |
+|-----------|----------|-----------|
+| La ventana se abre y se cierra al instante | Se ejecutó con doble click y hubo un error muy temprano | Abrí una terminal (`Win+R` → `cmd`), navegá a la carpeta con `cd`, y ejecutá `instalar.bat` desde ahí para ver el mensaje completo |
+| `ERROR: Python 3.10+ no encontrado` pero **sí** tenés Python | Python se instaló sin marcar *"Add Python to PATH"* | Reinstalá Python marcando esa casilla, o instalalo desde Microsoft Store (que lo agrega solo) |
+| `ERROR: No se encontró requirements.txt` | Se descargó solo el `instalar.bat`, no el proyecto completo | Descargá el repositorio entero (botón verde *Code* → *Download ZIP*) y descomprimilo antes de instalar |
+| `No se pudieron instalar las dependencias` | Sin internet, o la red de la UNED bloquea el acceso a PyPI | El instalador vuelve a intentar mostrando el error real: leelo y, si menciona un proxy o un timeout, probá desde otra red |
+| `no se puede cargar el archivo ... deshabilitada la ejecución de scripts` | Política de ejecución de PowerShell restringida | `instalar.bat` ya la evita con `-ExecutionPolicy Bypass`. Si el error aparece **después**, es porque intentaste usar `.venv\Scripts\activate`: usá `.venv\Scripts\python.exe` directamente |
+
+> [!NOTE]
+> El instalador se puede ejecutar **las veces que haga falta**. No borra tu archivo `.env` ni tus notas: si `.venv` ya existe lo reutiliza, y si `.env` ya existe no lo toca.
 
 ---
 
@@ -171,9 +205,7 @@ copy .env.example .env
 
 Toda la configuración se guarda en un archivo llamado **`.env`** en la misma carpeta del script. Este archivo **nunca se sube al repositorio** (está en `.gitignore`).
 
-Abrí el archivo `.env` con cualquier editor de texto (Bloc de notas, VS Code, Notepad++, etc.) y completá los valores:
-
-### Parte 1 — 🔑 Credenciales NTLM (fácil)
+Abrí el archivo `.env` con cualquier editor de texto (Bloc de notas, VS Code, Notepad++, etc.) y completá **dos valores**. Eso es todo lo que hay que configurar.
 
 Son el **mismo usuario y contraseña** que usás para entrar al [Entorno de Funcionarios UNED](https://entornofuncionarios.uned.ac.cr/).
 
@@ -513,7 +545,8 @@ Este es el proceso completo que recomendamos para subir notas de forma segura:
 
 ```mermaid
 flowchart TD
-    Start(["🏁 Inicio"]) --> Step1
+    Start(["🏁 Inicio"]) --> Step0
+    Step0["0️⃣ Ejecutar instalar.bat\n(una sola vez)"] --> Step1
     Step1["1️⃣ Exportar xlsx\ndesde Moodle"] --> Step2
     Step2["2️⃣ Configurar .env\n(usuario y contraseña SSO)"] --> Step3
     Step3["3️⃣ Ejecutar probe\npara verificar auth\ny cachear contexto"] --> Check1
@@ -666,6 +699,13 @@ flowchart LR
 
 ## 🩺 Solución de problemas
 
+> [!TIP]
+> 🧭 **Antes que nada, probá `estado`.** Te dice qué pasos ya se completaron y cuál es el siguiente comando, sin conectarse al servidor ni modificar nada:
+> ```
+> .venv\Scripts\python.exe notasparciales_upload.py estado
+> ```
+> Si el problema es con la **instalación** (y no con la carga de notas), mirá [🩺 Si el instalador falla](#-si-el-instalador-falla).
+
 | # | 🚨 Síntoma | 💡 Causa probable | ✅ Solución |
 |---|-----------|-------------------|-----------|
 | 1 | `"respuesta no-JSON"` | La sesión ASP.NET expiró a mitad de una corrida larga | Volvé a ejecutar el comando: el script rehace el handshake NTLM solo. Ya **no** hay que copiar cookies del navegador |
@@ -675,8 +715,8 @@ flowchart LR
 | 5 | `"Cédula no aparece en el roster oficial del grupo"` | La cédula del xlsx no está en el grupo de Notas Parciales | Verificá que el campo "Número de ID" en Moodle tenga la cédula correcta |
 | 6 | `"would_overwrite"` en el plan | El servidor ya tiene una nota diferente a la del xlsx | Si querés sobrescribir, usá `--allow-update` con `--justificacion-codigo` |
 | 7 | `"El servidor no permite el cambio"` | La nota está bloqueada (período cerrado o restricción administrativa) | Contactá al encargado de cátedra |
-| 8 | `"openpyxl no está instalado"` | Falta la dependencia para leer xlsx | Ejecutá `pip install openpyxl` (o re-ejecutá `instalar.bat`) |
-| 9 | `"Falta la dependencia requests-ntlm"` | Falta la dependencia para autenticación NTLM | Ejecutá `pip install requests-ntlm` (o re-ejecutá `instalar.bat`) |
+| 8 | `"openpyxl no está instalado"` | Falta la dependencia para leer xlsx | Volvé a ejecutar `instalar.bat` (es seguro: no borra tu `.env` ni tus notas) |
+| 9 | `"Falta la dependencia requests-ntlm"` | Falta la dependencia para autenticación NTLM | Volvé a ejecutar `instalar.bat` (es seguro: no borra tu `.env` ni tus notas) |
 | 10 | El plan dice `"SIN MAPEO"` para una columna | El script no pudo asociar la columna del xlsx con un instrumento del servidor | Usá `--map 'Nombre Columna (Real)=Tar1'` para forzar el mapeo manualmente |
 | 11 | `⚠ ADVERTENCIA: 0 estudiantes` / `ningún instrumento` en `probe` o `plan`, pero la autenticación fue exitosa | Algún código de contexto no corresponde a un grupo real (`--asignatura`, `--modelo`, `--cu`, `--grupo` o `--pac`). El servidor no da error en ese caso, simplemente devuelve tablas vacías | Revisá esos valores contra los dropdowns de la página. **No** es un problema de login/`.env` si la autenticación salió "EXITOSA" |
 | 12 | `"Leídos 0 registros"` / `"Columnas de nota detectadas: []"` en `plan` | El xlsx no tiene columnas con `(Real)`/`(Porcentaje)` — es un export "simple" de Moodle con columnas de nota sin sufijo | Ya soportado: cualquier columna que no sea `Nombre`/`Apellido(s)`/`Número de ID`/`Institución` (ni un campo conocido no-nota) se trata como columna de nota. Si igual da 0, revisá que el xlsx tenga esas 4 columnas exactas |
