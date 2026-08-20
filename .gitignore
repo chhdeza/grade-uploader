@@ -6,3 +6,7 @@ build/
 *.spec
 .venv/
 *.egg-info/
+.notasparciales_context.json
+notas_plan.csv
+notas_plan_resultados.csv
+*.xlsx

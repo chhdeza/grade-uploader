@@ -239,30 +239,6 @@
   .chip-upd{background:var(--red-100);color:var(--red-600);}
   .chip-same{background:var(--rule);color:var(--ink-500);}
 
-  /* cookie devtools mock */
-  .devtools{border:1px solid var(--rule);border-radius:8px;overflow:hidden;margin-top:.9rem;background:var(--paper-0);}
-  .devtools-tabs{display:flex;gap:0;background:var(--paper-50);border-bottom:1px solid var(--rule);font-family:var(--font-mono);font-size:.68rem;overflow-x:auto;}
-  .devtools-tabs span{padding:.5rem .7rem;color:var(--ink-500);white-space:nowrap;}
-  .devtools-tabs span.active{color:var(--ink-900);border-bottom:2px solid var(--brass-500);font-weight:700;}
-  .devtools-body{display:grid;grid-template-columns:150px 1fr;min-height:150px;}
-  @media (max-width:520px){.devtools-body{grid-template-columns:1fr;}}
-  .devtools-tree{border-right:1px solid var(--rule);padding:.6rem;font-family:var(--font-mono);font-size:.72rem;color:var(--ink-500);}
-  .devtools-tree .sel{color:var(--brass-500);font-weight:700;}
-  .devtools-rows{padding:.4rem;}
-  .cookie-row{
-    display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.5rem .5rem;border-radius:6px;
-    font-family:var(--font-mono);font-size:.72rem;
-  }
-  .cookie-row + .cookie-row{border-top:1px dashed var(--rule);}
-  .cookie-row .name{color:var(--ink-900);font-weight:600;}
-  .cookie-row .val{color:var(--ink-500);}
-  .cookie-row button{
-    font-family:var(--font-mono);font-size:.66rem;border:1px solid var(--rule);background:var(--paper-0);
-    color:var(--ink-700);border-radius:5px;padding:.25rem .5rem;cursor:pointer;flex:none;
-  }
-  .cookie-row button:hover{border-color:var(--brass-500);color:var(--brass-500);}
-  .cookie-row.got{background:var(--green-100);}
-  .cookie-row.got button{background:var(--green-600);color:#fff;border-color:var(--green-600);cursor:default;}
   .env-preview{margin-top:.8rem;}
   .env-preview .lbl{font-family:var(--font-mono);font-size:.68rem;color:var(--ink-500);margin-bottom:.3rem;}
 
@@ -355,7 +331,7 @@
       <span class="hud-mark-text">Grade Uploader<small>taller interactivo · UNED</small></span>
     </div>
     <div class="hud-progress">
-      <div class="hud-progress-top"><span>Progreso</span><span><span id="hud-xp">0</span> / 140 XP</span></div>
+      <div class="hud-progress-top"><span>Progreso</span><span><span id="hud-xp">0</span> / <span id="hud-total-xp">0</span> XP</span></div>
       <div class="hud-track"><div class="hud-fill" id="hud-fill"></div></div>
     </div>
     <div class="hud-badges" id="hud-badges"></div>
@@ -416,52 +392,52 @@ cd grade-uploader<br>
     <p class="muted" style="font-size:.82rem;">🧭 ¿Primera vez con Git? Mirá la <a href="git.html">guía rápida de Git</a> antes de este paso.</p>
   </section>
 
-  <!-- 3. DOUBLE KEY -->
+  <!-- 3. AUTH EXPLAINER -->
   <section class="cell info">
     <span class="eyebrow">Cómo funciona la autenticación</span>
-    <h2>Dos llaves, no una</h2>
-    <p>Notas Parciales pide dos cosas apiladas — el script necesita ambas guardadas en un archivo <code>.env</code> que nunca se sube a ningún repositorio.</p>
+    <h2>Un archivo, dos líneas</h2>
+    <p>El script se conecta al sistema de Notas Parciales con tu usuario y contraseña del SSO UNED. Hace el handshake NTLM contra el servidor y mantiene la sesión activa mientras corre — no hay ningún otro paso de tu parte.</p>
     <div class="keys">
-      <div class="key-card"><span class="ic">🔑</span><h3>NTLM — usuario y contraseña</h3><p>El mismo SSO que usás para el correo institucional. Sin <code>@uned.ac.cr</code>, solo el usuario.</p></div>
-      <div class="key-card"><span class="ic">🍪</span><h3>Cookies de sesión</h3><p>Un pase temporal que el navegador recibe al iniciar sesión. Expira en ~20 minutos de inactividad.</p></div>
+      <div class="key-card"><span class="ic">🔑</span><h3>Usuario y contraseña SSO</h3><p>El mismo que usás para el correo institucional. Sin <code>@uned.ac.cr</code>, solo el usuario. Se configura <strong>una sola vez</strong>, en tu archivo <code>.env</code>.</p></div>
+      <div class="key-card"><span class="ic">✨</span><h3>Sesión con el servidor</h3><p>El script la maneja solo, en memoria, mientras corre. No hay que tocar el navegador para nada.</p></div>
+    </div>
+    <div class="tbl-wrap" style="margin-top:1.1rem;">
+      <table>
+        <thead><tr><th>Lo que resuelve el script por vos</th></tr></thead>
+        <tbody>
+          <tr><td>Guarda el contexto del curso (<code>--escuela --catedra --encargado --tutor --modelo</code>) tras el primer <code>probe</code> exitoso — no hace falta volver a escribirlo</td></tr>
+          <tr><td>Detecta el grupo de cada centro universitario solo, comparando cédulas del xlsx contra el servidor</td></tr>
+          <tr><td>Si algún parámetro no corresponde a un curso real, te lo dice explícitamente — nunca te deja adivinando por qué no pasó nada</td></tr>
+        </tbody>
+      </table>
     </div>
   </section>
 
-  <!-- 4. COOKIE HUNT -->
-  <section class="cell" id="cell-cookies" data-step="cookies">
-    <div class="cell-gutter"><span class="cell-num">PASO 03</span><span class="cell-status" data-status="cookies">○</span></div>
-    <span class="eyebrow">Mini-juego</span>
-    <h2>La cacería de cookies 🍪</h2>
-    <p>En el navegador real: <code>F12</code> → pestaña <em>Application</em> → <em>Storage → Cookies</em> → <code>produccion.uned.ac.cr</code>. Practicá acá copiando las 3 cookies a tu <code>.env</code> simulado.</p>
-    <div class="devtools">
-      <div class="devtools-tabs"><span>Elements</span><span>Console</span><span>Sources</span><span>Network</span><span class="active">Application</span></div>
-      <div class="devtools-body">
-        <div class="devtools-tree">Storage<br>▾ Cookies<br>&nbsp;&nbsp;<span class="sel">▸ produccion.uned…</span></div>
-        <div class="devtools-rows" id="cookie-rows">
-          <div class="cookie-row" data-cookie="sid"><span><span class="name">ASP.NET_SessionId</span><br><span class="val">a1x9k3m0…</span></span><button data-copy="sid">📋 Copiar</button></div>
-          <div class="cookie-row" data-cookie="uzmx"><span><span class="name">uzmx</span><br><span class="val">Q7Vb2Ln8…</span></span><button data-copy="uzmx">📋 Copiar</button></div>
-          <div class="cookie-row" data-cookie="uzmxj"><span><span class="name">uzmxj</span><br><span class="val">Rk4Yp1Tz…</span></span><button data-copy="uzmxj">📋 Copiar</button></div>
-        </div>
-      </div>
+  <!-- 4. ENV CONFIG -->
+  <section class="cell" id="cell-env" data-step="envconfig">
+    <div class="cell-gutter"><span class="cell-num">PASO 03</span><span class="cell-status" data-status="envconfig">○</span></div>
+    <span class="eyebrow">Configuración — dos líneas y listo</span>
+    <h2>Completar el <code>.env</code></h2>
+    <p>Abrí el archivo <code>.env</code> que creó <code>instalar.bat</code>, con el Bloc de notas, y completá tu usuario y contraseña del SSO UNED (los mismos del correo institucional, sin <code>@uned.ac.cr</code>). Practicá acá:</p>
+    <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.9rem;">
+      <button class="btn btn-ghost" data-fill="user">✍️ Completar NP_NTLM_USER</button>
+      <button class="btn btn-ghost" data-fill="pass">✍️ Completar NP_NTLM_PASSWORD</button>
     </div>
     <div class="env-preview">
       <div class="lbl">.env</div>
-      <div class="term" id="env-out">NP_NTLM_USER=jperez
-NP_NTLM_PASSWORD=••••••••
-NP_COOKIE_ASPNET_SESSIONID=<span class="dim">&lt;pendiente&gt;</span>
-NP_COOKIE_UZMX=<span class="dim">&lt;pendiente&gt;</span>
-NP_COOKIE_UZMXJ=<span class="dim">&lt;pendiente&gt;</span></div>
+      <div class="term" id="env-out">NP_NTLM_USER=<span class="dim">&lt;pendiente&gt;</span>
+NP_NTLM_PASSWORD=<span class="dim">&lt;pendiente&gt;</span></div>
     </div>
-    <p class="muted" style="font-size:.82rem;">⏱️ Truco real: recargá (F5) la página de Notas Parciales justo antes de copiar cookies frescas — duran más si la pestaña sigue abierta.</p>
+    <p class="muted" style="font-size:.82rem;">🔒 Nada de esto se envía a ningún lado — es una simulación. El archivo real nunca se sube a Git (está en <code>.gitignore</code>), y esto es todo lo que hay que configurar: dos líneas, una sola vez.</p>
   </section>
 
   <!-- 5. PROBE -->
   <section class="cell" id="cell-probe" data-step="probe">
     <div class="cell-gutter"><span class="cell-num">PASO 04</span><span class="cell-status" data-status="probe">○</span></div>
-    <span class="eyebrow">Siempre primero</span>
-    <h2>Modo <code>probe</code> — verificar antes de tocar nada</h2>
-    <p>Confirma que las credenciales funcionan y muestra los instrumentos de evaluación del grupo. No escribe nada.</p>
-    <div class="cmd">python notasparciales_upload.py <span class="p">probe</span> --ano 2026 --pac 3 --escuela 03 --catedra 253 --asignatura 00883 --cu 42 --grupo 1 --modelo 4</div>
+    <span class="eyebrow">Siempre primero — y solo una vez por curso</span>
+    <h2>Modo <code>probe</code> — verificar y guardar el contexto</h2>
+    <p>Confirma que las credenciales funcionan y muestra los instrumentos de evaluación del grupo. No escribe nada. Si todo sale bien, <strong>guarda esos códigos</strong> para que no haya que volver a escribirlos.</p>
+    <div class="cmd">python notasparciales_upload.py <span class="p">probe</span> --ano 2026 --pac 3 --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 0401780367 --asignatura 00883 --cu 42 --grupo 1 --modelo 4</div>
     <button class="btn btn-primary" id="run-probe">▶ Ejecutar probe</button>
     <div class="term" id="term-probe" aria-live="polite"></div>
   </section>
@@ -471,7 +447,7 @@ NP_COOKIE_UZMXJ=<span class="dim">&lt;pendiente&gt;</span></div>
     <div class="cell-gutter"><span class="cell-num">PASO 05</span><span class="cell-status" data-status="quiz1quiz2">○</span></div>
     <span class="eyebrow">Datos de entrada</span>
     <h2>El xlsx exportado de Moodle</h2>
-    <p>Calificaciones → Exportar → Hoja de cálculo Excel. El script detecta solo las columnas que terminan en <code>(Real)</code>.</p>
+    <p>Calificaciones → Exportar → Hoja de cálculo Excel. El script detecta las columnas de nota solo: tanto el export "detallado" (<code>Tarea 1 (Real)</code>) como el "simple" (<code>Tarea 1</code>, sin sufijo) — cualquiera de los dos funciona.</p>
     <div class="tbl-wrap">
       <table>
         <thead><tr><th>Nombre</th><th>Apellido(s)</th><th>Número de ID</th><th>Institución</th><th>Tarea 1 (Real)</th></tr></thead>
@@ -513,8 +489,8 @@ NP_COOKIE_UZMXJ=<span class="dim">&lt;pendiente&gt;</span></div>
     <div class="cell-gutter"><span class="cell-num">PASO 06</span><span class="cell-status" data-status="plan">○</span></div>
     <span class="eyebrow">El paso auditable</span>
     <h2>Modo <code>plan</code> — generar el plan antes de subir nada</h2>
-    <p>Lee el xlsx, compara contra lo que ya existe en el servidor, y escribe un <code>plan.csv</code> revisable en Excel.</p>
-    <div class="cmd">python notasparciales_upload.py <span class="p">plan</span> --xlsx calificaciones_moodle.xlsx --cu-grupo 42=1 --cu-grupo 01=2</div>
+    <p>Lee el xlsx, compara contra lo que ya existe en el servidor, y escribe un <code>plan.csv</code> revisable en Excel. Los centros universitarios (CU) salen solos de la columna "Institución" del xlsx, y el número de grupo de cada uno se detecta comparando cédulas contra el servidor — no hace falta escribirlos a mano.</p>
+    <div class="cmd">python notasparciales_upload.py <span class="p">plan</span> --ano 2026 --pac 3 --asignatura 00883 --xlsx calificaciones_moodle.xlsx</div>
     <button class="btn btn-primary" id="run-plan">▶ Generar plan.csv</button>
     <div id="plan-out"></div>
   </section>
@@ -555,21 +531,37 @@ NP_COOKIE_UZMXJ=<span class="dim">&lt;pendiente&gt;</span></div>
     </div>
   </section>
 
-  <!-- 10. FAQ -->
+  <!-- 10. ESTADO -->
+  <section class="cell" id="cell-estado" data-step="estado">
+    <div class="cell-gutter"><span class="cell-num">PASO 09</span><span class="cell-status" data-status="estado">○</span></div>
+    <span class="eyebrow">La red de seguridad, siempre a mano</span>
+    <h2>Modo <code>estado</code> — ¿en qué iba?</h2>
+    <p>Cerraste la terminal, volviste al otro día, o simplemente no te acordás qué seguía. <code>estado</code> lee solo archivos de tu computadora — no toca el servidor, no lleva parámetros — y te dice exactamente qué falta y cuál es el próximo comando.</p>
+    <div class="cmd">python notasparciales_upload.py <span class="p">estado</span></div>
+    <button class="btn btn-primary" id="run-estado">🧭 Consultar estado</button>
+    <div class="term" id="term-estado" aria-live="polite"></div>
+    <p class="muted" style="font-size:.82rem;">💡 El resultado de acá abajo refleja <em>tu propio progreso en este taller</em> hasta este punto — así funciona el comando real: mirando lo que ya existe, no lo que le contaste.</p>
+  </section>
+
+  <!-- 11. FAQ -->
   <section class="cell info">
     <span class="eyebrow">Referencia rápida</span>
     <h2>Cuando algo falla</h2>
     <details>
-      <summary>El script dice "respuesta no-JSON" o "probable expiración de cookies"</summary>
-      <p>Volvé al navegador, presioná <code>F5</code> en la pestaña de Notas Parciales, y copiá las 3 cookies de nuevo — duran ~20 minutos de inactividad.</p>
+      <summary><code>probe</code> o <code>plan</code> dicen "0 estudiantes" pero la autenticación fue exitosa</summary>
+      <p>El servidor devuelve tablas vacías (sin error) cuando algún código no corresponde a un grupo real: <code>--asignatura</code>, <code>--modelo</code>, <code>--cu</code>, <code>--grupo</code> o <code>--pac</code>. El script te lo dice explícitamente — <strong>no</strong> es un problema de usuario/contraseña.</p>
     </details>
     <details>
-      <summary>¿Puedo cargar notas de varios centros universitarios a la vez?</summary>
-      <p>Sí — usá varios <code>--cu-grupo CU=GRUPO</code> en el mismo comando <code>plan</code>, uno por cada centro presente en el xlsx.</p>
+      <summary>¿Tengo que indicar el grupo de cada centro universitario a mano?</summary>
+      <p>No. El modo <code>plan</code> los detecta solo comparando las cédulas del xlsx contra el servidor. <code>--cu-grupo CU=GRUPO</code> sigue existiendo por si necesitás forzar un valor manualmente.</p>
     </details>
     <details>
       <summary>¿El modo <code>csv</code> también convierte la escala 0–100 a 0–10?</summary>
       <p>No. El modo <code>csv</code> espera las notas ya en escala 0–10. Solo el modo <code>plan</code> hace la conversión automática desde un xlsx de Moodle.</p>
+    </details>
+    <details>
+      <summary>Perdí el hilo. ¿Por dónde empiezo de nuevo?</summary>
+      <p>Con <code>estado</code>. Es justamente para eso — no necesita parámetros y siempre te da el próximo comando exacto.</p>
     </details>
   </section>
 
@@ -585,7 +577,7 @@ NP_COOKIE_UZMXJ=<span class="dim">&lt;pendiente&gt;</span></div>
       <div class="sub">Grade Uploader — Taller Interactivo para Tutores UNED</div>
       <div class="cert-name" id="cert-name-out">Tutor / Tutora UNED</div>
       <div class="cert-badges" id="cert-badges"></div>
-      <div class="cert-meta" id="cert-meta">0 / 140 XP obtenidos · <span id="cert-date"></span></div>
+      <div class="cert-meta" id="cert-meta">0 XP obtenidos · <span id="cert-date"></span></div>
     </div>
     <div class="cert-actions">
       <button class="btn btn-primary" id="cert-download">📥 Descargar como imagen</button>
@@ -594,6 +586,7 @@ NP_COOKIE_UZMXJ=<span class="dim">&lt;pendiente&gt;</span></div>
 
   <footer>
     Basado en <a href="https://github.com/chhdeza/grade-uploader" target="_blank" rel="noopener">chhdeza/grade-uploader</a> · taller de simulación, sin conexión al sistema real.<br>
+    Autenticación NTLM: gracias <a href="https://github.com/gamboavo" target="_blank" rel="noopener">@gamboavo</a> 🙌<br>
     ¿No conocés Git? <a href="git.html">Guía rápida de Git para colegas</a>.
   </footer>
 </div>
@@ -608,18 +601,19 @@ NP_COOKIE_UZMXJ=<span class="dim">&lt;pendiente&gt;</span></div>
   var STEP_DEFS = [
     {id:'prereqs', xp:10, badge:null, target:'cell-prereqs', label:'Prerrequisitos'},
     {id:'install', xp:15, badge:{id:'installer',icon:'⚙️',name:'Instalador'}, target:'cell-install', label:'Instalación'},
-    {id:'cookies', xp:25, badge:{id:'cookiehunter',icon:'🍪',name:'Cazador de Cookies'}, target:'cell-cookies', label:'Cookies'},
-    {id:'probe', xp:15, badge:{id:'verified',icon:'🔑',name:'Verificado'}, target:'cell-probe', label:'Probe'},
+    {id:'envconfig', xp:15, badge:{id:'singlekey',icon:'🔑',name:'Una Sola Llave'}, target:'cell-env', label:'.env'},
+    {id:'probe', xp:15, badge:{id:'verified',icon:'🔎',name:'Verificado'}, target:'cell-probe', label:'Probe'},
     {id:'quiz1', xp:10, badge:null, target:'cell-xlsx', label:'Formato xlsx'},
     {id:'quiz2', xp:10, badge:{id:'translator',icon:'📊',name:'Traductor de Moodle'}, target:'cell-xlsx', label:'Escalas'},
     {id:'plan', xp:20, badge:{id:'planner',icon:'📋',name:'Planificador'}, target:'cell-plan', label:'Plan'},
     {id:'quiz3', xp:10, badge:{id:'safety',icon:'🛟',name:'Piloto Seguro'}, target:'cell-quiz3', label:'Dry-run'},
-    {id:'apply', xp:25, badge:{id:'graduate',icon:'🎓',name:'Notas Cargadas'}, target:'cell-apply', label:'Apply'}
+    {id:'apply', xp:25, badge:{id:'graduate',icon:'🎓',name:'Notas Cargadas'}, target:'cell-apply', label:'Apply'},
+    {id:'estado', xp:15, badge:{id:'neverlost',icon:'🧭',name:'Nunca Perdido'}, target:'cell-estado', label:'Estado'}
   ];
   var TOTAL_XP = STEP_DEFS.reduce(function(a,s){return a+s.xp;},0);
-  var STORE_KEY = 'gradeUploaderTutorialState_v1';
+  var STORE_KEY = 'gradeUploaderTutorialState_v2';
 
-  var state = {done:{}, cookies:{}};
+  var state = {done:{}, env:{}};
   try{
     var saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
     if(saved) state = saved;
@@ -652,6 +646,7 @@ NP_COOKIE_UZMXJ=<span class="dim">&lt;pendiente&gt;</span></div>
   function renderHUD(){
     var xp = xpEarned();
     hudXp.textContent = xp;
+    document.getElementById('hud-total-xp').textContent = TOTAL_XP;
     hudFill.style.width = Math.round(xp/TOTAL_XP*100) + '%';
     hudBadges.innerHTML = '';
     var earnedIds = badgesEarned().map(function(b){return b.id;});
@@ -755,50 +750,47 @@ NP_COOKIE_UZMXJ=<span class="dim">&lt;pendiente&gt;</span></div>
     var term = document.getElementById('term-install');
     typeLines(term, [
       '<span class="hd">== instalar.bat ==</span>',
-      '[1/4] Verificando Python... <span class="ok">OK (3.11.4)</span>',
-      '[2/4] Creando entorno virtual (.venv)... <span class="ok">OK</span>',
-      '[3/4] Instalando dependencias (requests, openpyxl, python-dotenv)... <span class="ok">OK</span>',
-      '[4/4] Creando .env desde plantilla... <span class="ok">OK</span>',
+      '<span class="dim">💬 Te aseguro que esta versión SÍ funciona, no como el día que Carlos los hizo quedarse hasta las 9PM… para nada :)</span>',
       '',
-      '<span class="ok">✅ Instalación completa.</span> Editá .env con tus credenciales.'
+      '[1/5] Verificando Python... <span class="ok">OK (3.11.4)</span>',
+      '[2/5] Creando entorno virtual (.venv)... <span class="ok">OK</span>',
+      '[3/5] Instalando dependencias (requests, requests-ntlm, openpyxl, python-dotenv)... <span class="ok">OK</span>',
+      '[4/5] Creando .env desde plantilla... <span class="ok">OK</span>',
+      '[5/5] Verificando la instalación... <span class="ok">OK</span>',
+      '',
+      '<span class="ok">✅ Instalación completa.</span> Ahora completá tus credenciales en .env.'
     ], function(){ markDone('install'); btn.textContent = '✓ Instalado'; });
   });
 
-  /* ---------- COOKIES ---------- */
-  var cookieMeta = {
-    sid: {label:'ASP.NET_SessionId', varName:'NP_COOKIE_ASPNET_SESSIONID', value:'a1x9k3m0f7q2z…'},
-    uzmx: {label:'uzmx', varName:'NP_COOKIE_UZMX', value:'Q7Vb2Ln8Kd91…'},
-    uzmxj: {label:'uzmxj', varName:'NP_COOKIE_UZMXJ', value:'Rk4Yp1Tz6Bs0…'}
+  /* ---------- ENV CONFIG ---------- */
+  var envMeta = {
+    user: {varName:'NP_NTLM_USER', value:'jperez'},
+    pass: {varName:'NP_NTLM_PASSWORD', value:'••••••••'}
   };
   function renderEnv(){
-    var lines = [
-      'NP_NTLM_USER=jperez',
-      'NP_NTLM_PASSWORD=••••••••'
-    ];
-    ['sid','uzmx','uzmxj'].forEach(function(k){
-      var m = cookieMeta[k];
-      lines.push(m.varName + '=' + (state.cookies[k] ? m.value : '<span class="dim">&lt;pendiente&gt;</span>'));
+    var lines = ['user','pass'].map(function(k){
+      var m = envMeta[k];
+      return m.varName + '=' + (state.env[k] ? m.value : '<span class="dim">&lt;pendiente&gt;</span>');
     });
     document.getElementById('env-out').innerHTML = lines.join('\n');
   }
-  document.querySelectorAll('[data-copy]').forEach(function(btn){
+  document.querySelectorAll('[data-fill]').forEach(function(btn){
     btn.addEventListener('click', function(){
-      var key = btn.getAttribute('data-copy');
-      state.cookies[key] = true;
-      var row = btn.closest('.cookie-row');
-      row.classList.add('got');
-      btn.textContent = '✓ Copiada';
+      var key = btn.getAttribute('data-fill');
+      state.env[key] = true;
+      btn.textContent = '✓ ' + envMeta[key].varName + ' completado';
+      btn.disabled = true;
       renderEnv();
       save();
-      if(state.cookies.sid && state.cookies.uzmx && state.cookies.uzmxj){
-        markDone('cookies');
+      if(state.env.user && state.env.pass){
+        markDone('envconfig');
       }
     });
   });
-  ['sid','uzmx','uzmxj'].forEach(function(k){
-    if(state.cookies[k]){
-      var row = document.querySelector('.cookie-row[data-cookie="'+k+'"]');
-      if(row){ row.classList.add('got'); row.querySelector('button').textContent = '✓ Copiada'; }
+  ['user','pass'].forEach(function(k){
+    if(state.env[k]){
+      var btn = document.querySelector('[data-fill="'+k+'"]');
+      if(btn){ btn.textContent = '✓ ' + envMeta[k].varName + ' completado'; btn.disabled = true; }
     }
   });
   renderEnv();
@@ -809,11 +801,9 @@ NP_COOKIE_UZMXJ=<span class="dim">&lt;pendiente&gt;</span></div>
     btn.disabled = true;
     var term = document.getElementById('term-probe');
     typeLines(term, [
-      '<span class="hd">== Probando autenticación ==</span>',
-      '<span class="ok">OK: cookies válidas, el sistema está abierto.</span>',
-      '',
-      '<span class="hd">== Nota mínima para 00883 ==</span>',
-      'Nota mínima de aprobación: 7',
+      '<span class="hd">========================================</span>',
+      '<span class="hd">AUTENTICACIÓN EXITOSA</span>',
+      '<span class="hd">========================================</span>',
       '',
       '<span class="hd">== Instrumentos del modelo ==</span>',
       '  Tar1   ->  Tarea 1 (2)',
@@ -821,8 +811,17 @@ NP_COOKIE_UZMXJ=<span class="dim">&lt;pendiente&gt;</span></div>
       '  Tar3   ->  Tarea 3 (2)',
       '  Proy1  ->  Proyecto 1 (4)',
       '',
-      '<span class="hd">== Grupo ==</span>',
-      'Estudiantes en el grupo: <span class="warn">25</span>'
+      'Estudiantes en el grupo: <span class="ok">25</span>',
+      '',
+      '<span class="dim">══════════════════════════════════════════════════════</span>',
+      ' <span class="ok">✓ PASO 1 DE 3 COMPLETADO</span> — Conexión verificada',
+      '<span class="dim">══════════════════════════════════════════════════════</span>',
+      ' Los códigos del curso quedaron guardados. La próxima',
+      ' vez no hace falta volver a escribirlos.',
+      '',
+      ' ▶ SIGUIENTE PASO:',
+      ' <span class="warn">python notasparciales_upload.py plan --ano 2026 --pac 3 --asignatura 00883 --xlsx calificaciones_moodle.xlsx</span>',
+      '<span class="dim">══════════════════════════════════════════════════════</span>'
     ], function(){ markDone('probe'); btn.textContent = '✓ Verificado'; });
   });
 
@@ -852,7 +851,7 @@ NP_COOKIE_UZMXJ=<span class="dim">&lt;pendiente&gt;</span></div>
       ['0304560789','Juan Rodríguez','Tar1','7.5','7.0','<span class="chip chip-upd">Actualizar</span>'],
       ['0501230456','Ana Mora','Tar1','998','998','<span class="chip chip-same">Sin cambio</span>']
     ];
-    out.innerHTML = '<div class="term">Leyendo calificaciones_moodle.xlsx… <span class="ok">25 estudiantes</span>\nComparando contra el servidor… <span class="ok">listo</span>\nEscribiendo <span class="warn">notas_plan.csv</span> (4 de 25 filas mostradas)</div>';
+    out.innerHTML = '<div class="term">Leyendo calificaciones_moodle.xlsx… <span class="ok">25 estudiantes</span>\nCU detectados en el xlsx: <span class="ok">01, 42</span>\nAuto-detectando grupo por CU (solo lectura)… CU=01 → grupo <span class="ok">2</span> · CU=42 → grupo <span class="ok">1</span>\nComparando contra el servidor… <span class="ok">listo</span>\nEscribiendo <span class="warn">notas_plan.csv</span> (4 de 25 filas mostradas)</div>';
     setTimeout(function(){
       var tbl = document.createElement('div');
       tbl.className = 'tbl-wrap';
@@ -861,11 +860,11 @@ NP_COOKIE_UZMXJ=<span class="dim">&lt;pendiente&gt;</span></div>
         rows.map(function(r){ return '<tr><td>'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+'</td><td>'+r[3]+'</td><td>'+r[4]+'</td><td>'+r[5]+'</td></tr>'; }).join('') +
         '</tbody></table>';
       out.appendChild(tbl);
-      var caption = document.createElement('p');
-      caption.className = 'muted';
-      caption.style.fontSize = '.82rem';
-      caption.textContent = '👉 revisá notas_plan.csv en Excel antes de aplicar nada.';
-      out.appendChild(caption);
+      var footer = document.createElement('div');
+      footer.className = 'term';
+      footer.style.marginTop = '.6rem';
+      footer.innerHTML = ' <span class="ok">✓ PASO 2 DE 3 COMPLETADO</span> — Plan generado\n 🔒 <span class="dim">Todavía no se escribió nada en el sistema de la UNED.</span>\n 👉 Abrí notas_plan.csv en Excel y revisá antes de continuar.';
+      out.appendChild(footer);
       markDone('plan');
       btn.textContent = '✓ Plan generado';
     }, reduceMotion ? 0 : 550);
@@ -879,7 +878,14 @@ NP_COOKIE_UZMXJ=<span class="dim">&lt;pendiente&gt;</span></div>
     typeLines(term, [
       '<span class="hd">🧪 DRY-RUN</span>',
       '25 operaciones simuladas · <span class="ok">0 errores</span>',
-      '<span class="dim">Nada fue escrito en el servidor.</span>'
+      '',
+      '<span class="dim">══════════════════════════════════════════════════════</span>',
+      ' <span class="ok">✓ PRUEBA EXITOSA</span> — todavía no se subió nada',
+      '<span class="dim">══════════════════════════════════════════════════════</span>',
+      ' 🔒 <span class="dim">Nada fue escrito en el servidor real de la UNED.</span>',
+      ' ▶ ÚLTIMO PASO — esto SÍ escribe las notas de verdad',
+      ' (la diferencia es el <span class="warn">--commit</span> del final):',
+      '<span class="dim">══════════════════════════════════════════════════════</span>'
     ], function(){
       document.getElementById('commit-block').style.display = 'block';
     });
@@ -904,8 +910,12 @@ NP_COOKIE_UZMXJ=<span class="dim">&lt;pendiente&gt;</span></div>
       } else {
         count.textContent = '';
         typeLines(termCommit, [
-          '<span class="ok">✅ 25/25 notas subidas correctamente.</span>',
-          'Resultados guardados en <span class="warn">notas_plan_resultados.csv</span>'
+          '<span class="dim">══════════════════════════════════════════════════════</span>',
+          ' <span class="ok">🎉 PASO 3 DE 3 COMPLETADO</span> — Notas cargadas',
+          '<span class="dim">══════════════════════════════════════════════════════</span>',
+          ' Se subieron <span class="ok">25</span> nota(s) al sistema de Notas Parciales.',
+          ' Comprobante: <span class="warn">notas_plan_resultados.csv</span>',
+          '<span class="dim">══════════════════════════════════════════════════════</span>'
         ], function(){
           markDone('apply');
           btn.textContent = '✓ Notas cargadas';
@@ -949,6 +959,54 @@ NP_COOKIE_UZMXJ=<span class="dim">&lt;pendiente&gt;</span></div>
     }
     draw();
   }
+
+  /* ---------- ESTADO ---------- */
+  document.getElementById('run-estado').addEventListener('click', function(){
+    var btn = this;
+    var term = document.getElementById('term-estado');
+
+    var credOk = !!(state.env.user && state.env.pass);
+    var probeOk = !!state.done.probe;
+    var planOk = !!state.done.plan;
+    var applyOk = !!state.done.apply;
+
+    var lines = [];
+    lines.push('<span class="dim">══════════════════════════════════════════════════════</span>');
+    lines.push(' <span class="hd">ESTADO DEL PROCESO DE CARGA DE NOTAS</span>');
+    lines.push('<span class="dim">══════════════════════════════════════════════════════</span>');
+    lines.push(credOk ? ' <span class="ok">✓</span> Credenciales configuradas (.env)' : ' <span class="warn">✗</span> Faltan credenciales en el archivo .env');
+    lines.push(probeOk ? ' <span class="ok">✓</span> Curso verificado (00883, 2026 PAC 3)' : ' <span class="warn">✗</span> Ningún curso verificado todavía');
+    lines.push(planOk ? ' <span class="ok">✓</span> Plan generado (notas_plan.csv)' : ' <span class="warn">✗</span> No hay plan generado');
+    lines.push(applyOk ? ' <span class="ok">✓</span> Notas cargadas al sistema' : ' <span class="warn">✗</span> Todavía no se subió ninguna nota');
+    lines.push('<span class="dim">══════════════════════════════════════════════════════</span>');
+    lines.push(' ▶ SIGUIENTE PASO:');
+    lines.push('');
+
+    var nextTarget = null, nextLabel = '';
+    if(!credOk){ nextTarget = 'cell-env'; nextLabel = 'Completá tu .env (PASO 03, más arriba).'; }
+    else if(!probeOk){ nextTarget = 'cell-probe'; nextLabel = 'Corré probe para verificar el curso (PASO 04).'; }
+    else if(!planOk){ nextTarget = 'cell-plan'; nextLabel = 'Generá el plan a partir del xlsx (PASO 06).'; }
+    else if(!applyOk){ nextTarget = 'cell-apply'; nextLabel = 'Revisá el plan y corré apply (PASO 08).'; }
+    else { nextLabel = '¡Completaste todo el recorrido! 🎉 Bajá por tu certificado.'; }
+    lines.push(' <span class="warn">' + nextLabel + '</span>');
+    lines.push('<span class="dim">══════════════════════════════════════════════════════</span>');
+
+    typeLines(term, lines, function(){
+      if(nextTarget){
+        var goBtn = document.createElement('button');
+        goBtn.className = 'btn btn-ghost';
+        goBtn.style.marginTop = '.7rem';
+        goBtn.textContent = '↑ Ir a ese paso';
+        goBtn.addEventListener('click', function(){
+          var el = document.getElementById(nextTarget);
+          if(el) el.scrollIntoView({behavior: reduceMotion ? 'auto' : 'smooth', block:'center'});
+        });
+        term.appendChild(goBtn);
+      }
+      markDone('estado');
+      btn.textContent = '✓ Estado consultado';
+    });
+  });
 
   /* ---------- CERTIFICATE ---------- */
   var certNameInput = document.getElementById('cert-name');

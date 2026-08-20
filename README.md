@@ -11,10 +11,11 @@ En lugar de cargar notas una por una en el navegador, este script lee las califi
 - [🔭 Vista general](#-vista-general)
 - [⚙️ Requisitos previos](#️-requisitos-previos)
 - [🚀 Instalación](#-instalación)
+  - [🩺 Si el instalador falla](#-si-el-instalador-falla)
 - [🔑 Configuración de credenciales](#-configuración-de-credenciales)
-- [🍪 Cómo obtener las cookies del navegador](#-cómo-obtener-las-cookies-del-navegador)
 - [📊 Formato de archivos de entrada](#-formato-de-archivos-de-entrada)
 - [🛠️ Modos de uso](#️-modos-de-uso)
+  - [🧭 ¿En qué paso voy? (`estado`)](#-modo-estado--en-qué-paso-voy)
 - [✅ Flujo recomendado paso a paso](#-flujo-recomendado-paso-a-paso)
 - [📖 Referencia de parámetros CLI](#-referencia-de-parámetros-cli)
 - [🔒 Seguridad](#-seguridad)
@@ -50,26 +51,22 @@ flowchart LR
 
 ### 🔐 Arquitectura de autenticación
 
-El sistema de Notas Parciales usa **dos capas de autenticación** apiladas. Ambas son necesarias:
+El script se autentica **solo con tu usuario y contraseña del SSO UNED**.
 
 ```mermaid
 flowchart TB
     subgraph user ["👤 Lo que hace el usuario"]
         U1["1️⃣ Anotar usuario y\ncontraseña del SSO UNED\nen el archivo .env"]
-        U2["2️⃣ Iniciar sesión en\nel navegador"]
-        U3["3️⃣ Copiar 3 cookies\ndesde Dev Tools\nal archivo .env"]
     end
 
     subgraph script ["🤖 Lo que hace el script"]
         S1["Lee .env"]
         S2["🔑 NTLM handshake\ncon IIS\n(usuario + contraseña)"]
-        S3["🍪 Envía cookies\nde sesión ASP.NET"]
+        S3["🍪 Recibe y guarda solo\nlas cookies de sesión\nASP.NET automáticamente"]
         S4["✅ Acceso completo\nal servidor"]
     end
 
     U1 --> S1
-    U2 --> U3
-    U3 --> S1
     S1 --> S2
     S2 --> S3
     S3 --> S4
@@ -78,7 +75,7 @@ flowchart TB
 | Capa | ¿Qué es? | ¿De dónde sale? |
 |------|----------|----------------|
 | 🔑 **NTLM** | Autenticación Windows a nivel del servidor IIS | Tu usuario y contraseña del SSO UNED (el mismo de `entornofuncionarios.uned.ac.cr`) |
-| 🍪 **Cookies de sesión** | Pase temporal que el navegador recibe al iniciar sesión | Se copian desde las herramientas de desarrollador del navegador |
+| 🍪 **Cookies de sesión** | Pase temporal que mantiene viva la sesión ASP.NET | Las emite el servidor durante el handshake NTLM; la librería `requests` las guarda sola. **El usuario no hace nada.** |
 
 ---
 
@@ -86,13 +83,13 @@ flowchart TB
 
 | Requisito | Detalle |
 |-----------|--------|
-| 💻 **Sistema operativo** | Windows 10 o Windows 11 |
-| 🐍 **Python 3.10+** | Solo si NO vas a usar el ejecutable `.exe` |
+| 💻 **Sistema operativo** | Windows 10 o Windows 11 (incluyen PowerShell, que usa el instalador) |
+| 🐍 **Python 3.10+** | Solo si NO vas a usar el ejecutable `.exe`. Al instalarlo, marcá *"Add Python to PATH"* |
 | 🌐 **Cuenta SSO UNED** | Con acceso al sistema de Notas Parciales |
-| 📶 **Conexión a internet** | Para comunicarse con el servidor de la UNED |
+| 📶 **Conexión a internet** | Para instalar las dependencias y para comunicarse con el servidor de la UNED |
 
 > [!TIP]
-> Si no tenés Python instalado y no querés instalarlo, podés generar un **ejecutable `.exe`** que incluye todo lo necesario. Vea la sección [🚀 Instalación — Opción B](#opción-b--ejecutable-exe-sin-python).
+> Si no tenés Python instalado y no querés instalarlo, podés generar un **ejecutable `.exe`** que incluye todo lo necesario. Vea la sección [🚀 Instalación — Opción B](#opción-b---ejecutable-exe-sin-python).
 
 ---
 
@@ -107,19 +104,32 @@ git clone https://github.com/chhdeza/grade-uploader.git
 cd grade-uploader
 ```
 
-2️⃣ Ejecutá el instalador:
+2️⃣ Ejecutá el instalador (doble click en el archivo, o escribiendo su nombre en la terminal):
 
 ```
 instalar.bat
 ```
 
-Esto automáticamente:
-- ✅ Verifica que Python esté instalado
-- ✅ Crea un entorno virtual (`.venv`)
-- ✅ Instala las dependencias
-- ✅ Crea el archivo `.env` desde la plantilla
+Esto hace 5 cosas automáticamente:
 
-3️⃣ Configurá las credenciales en el archivo `.env` (ver [🔑 Configuración de credenciales](#-configuración-de-credenciales)).
+| Paso | Qué hace |
+|------|----------|
+| `[1/5]` | Verifica que tengas Python 3.10 o superior (y te dice cómo instalarlo si no) |
+| `[2/5]` | Crea un entorno virtual (`.venv`) para no ensuciar tu Python del sistema |
+| `[3/5]` | Instala las dependencias del proyecto |
+| `[4/5]` | Crea tu archivo `.env` a partir de la plantilla (no lo sobrescribe si ya existe) |
+| `[5/5]` | Verifica que todo quedó funcionando de verdad |
+
+3️⃣ Abrí el archivo `.env` con el Bloc de notas y completá tu usuario y contraseña de la UNED (ver [🔑 Configuración de credenciales](#-configuración-de-credenciales)).
+
+4️⃣ Ejecutá este comando: te va a decir en qué paso estás y cuál es el siguiente.
+
+```
+.venv\Scripts\python.exe notasparciales_upload.py estado
+```
+
+> [!IMPORTANT]
+> 💡 **Usá siempre `.venv\Scripts\python.exe` en lugar de `python` a secas.** Así no hace falta "activar el entorno virtual" en cada terminal nueva — un paso que además puede fallar si Windows tiene restringida la ejecución de scripts.
 
 ---
 
@@ -139,11 +149,13 @@ Esto genera `notasparciales_upload.exe` en la carpeta raíz. Después:
    - `notasparciales_upload.exe`
    - `.env` (con las credenciales ya configuradas)
 
-2️⃣ Ejecutá desde la línea de comandos:
+2️⃣ Ejecutá desde la línea de comandos. Empezá por `estado`, que te va a indicar el siguiente paso:
 
 ```
-notasparciales_upload.exe probe --ano 2026 --pac 3 ...
+notasparciales_upload.exe estado
 ```
+
+Con el `.exe` los comandos son idénticos a los de este README, solo cambia el principio: donde dice `python notasparciales_upload.py`, escribí `notasparciales_upload.exe`.
 
 > [!NOTE]
 > El `.exe` pesa aproximadamente 15-25 MB porque incluye Python y todas las dependencias empaquetadas.
@@ -152,19 +164,37 @@ notasparciales_upload.exe probe --ano 2026 --pac 3 ...
 
 ### Opción C — 🔧 Instalación manual
 
-```bash
-# Crear entorno virtual
+```bat
+REM Crear entorno virtual
 python -m venv .venv
 
-# Activar el entorno virtual
-.venv\Scripts\activate
+REM Instalar dependencias (sin necesidad de activar nada)
+.venv\Scripts\pip.exe install -r requirements.txt
 
-# Instalar dependencias
-pip install -r requirements.txt
-
-# Crear archivo de configuración
+REM Crear archivo de configuración
 copy .env.example .env
+
+REM Verificar que quedó bien
+.venv\Scripts\python.exe notasparciales_upload.py estado
 ```
+
+> [!TIP]
+> No hace falta `activate`: llamando directamente a `.venv\Scripts\pip.exe` y `.venv\Scripts\python.exe` se usa el entorno virtual igual, y funciona aunque Windows tenga restringida la ejecución de scripts de PowerShell.
+
+---
+
+### 🩺 Si el instalador falla
+
+| 🚨 Síntoma | 💡 Causa | ✅ Solución |
+|-----------|----------|-----------|
+| La ventana se abre y se cierra al instante | Se ejecutó con doble click y hubo un error muy temprano | Abrí una terminal (`Win+R` → `cmd`), navegá a la carpeta con `cd`, y ejecutá `instalar.bat` desde ahí para ver el mensaje completo |
+| `ERROR: Python 3.10+ no encontrado` pero **sí** tenés Python | Python se instaló sin marcar *"Add Python to PATH"* | Reinstalá Python marcando esa casilla, o instalalo desde Microsoft Store (que lo agrega solo) |
+| `ERROR: No se encontró requirements.txt` | Se descargó solo el `instalar.bat`, no el proyecto completo | Descargá el repositorio entero (botón verde *Code* → *Download ZIP*) y descomprimilo antes de instalar |
+| `No se pudieron instalar las dependencias` | Sin internet, o la red de la UNED bloquea el acceso a PyPI | El instalador vuelve a intentar mostrando el error real: leelo y, si menciona un proxy o un timeout, probá desde otra red |
+| `no se puede cargar el archivo ... deshabilitada la ejecución de scripts` | Política de ejecución de PowerShell restringida | `instalar.bat` ya la evita con `-ExecutionPolicy Bypass`. Si el error aparece **después**, es porque intentaste usar `.venv\Scripts\activate`: usá `.venv\Scripts\python.exe` directamente |
+
+> [!NOTE]
+> El instalador se puede ejecutar **las veces que haga falta**. No borra tu archivo `.env` ni tus notas: si `.venv` ya existe lo reutiliza, y si `.env` ya existe no lo toca.
 
 ---
 
@@ -172,9 +202,7 @@ copy .env.example .env
 
 Toda la configuración se guarda en un archivo llamado **`.env`** en la misma carpeta del script. Este archivo **nunca se sube al repositorio** (está en `.gitignore`).
 
-Abrí el archivo `.env` con cualquier editor de texto (Bloc de notas, VS Code, Notepad++, etc.) y completá los valores:
-
-### Parte 1 — 🔑 Credenciales NTLM (fácil)
+Abrí el archivo `.env` con cualquier editor de texto (Bloc de notas, VS Code, Notepad++, etc.) y completá **dos valores**. Eso es todo lo que hay que configurar.
 
 Son el **mismo usuario y contraseña** que usás para entrar al [Entorno de Funcionarios UNED](https://entornofuncionarios.uned.ac.cr/).
 
@@ -189,225 +217,6 @@ NP_NTLM_PASSWORD=tu_contraseña_aqui
 
 > [!IMPORTANT]
 > El usuario es **solo el nombre**, sin `@uned.ac.cr`. Por ejemplo: `jperez`, NO `jperez@uned.ac.cr`.
-
-### Parte 2 — 🍪 Cookies de sesión (requiere Dev Tools)
-
-Las cookies son como un **pase temporal** que el navegador recibe al iniciar sesión en Notas Parciales. El script necesita ese pase para poder comunicarse con el servidor.
-
-```ini
-NP_COOKIE_ASPNET_SESSIONID=abc123xyz...
-NP_COOKIE_UZMX=A2B3C4D5E6...
-NP_COOKIE_UZMXJ=F7G8H9I0J1...
-```
-
-> [!WARNING]
-> ⏱️ Las cookies **expiran después de ~20 minutos de inactividad**. Si el script empieza a fallar, hay que volver al navegador, recargar la página y copiar cookies nuevas. Vea la sección siguiente para instrucciones detalladas.
-
-📌 **¿De dónde salen estos valores?** Vea la siguiente sección: [🍪 Cómo obtener las cookies del navegador](#-cómo-obtener-las-cookies-del-navegador).
-
----
-
-## 🍪 Cómo obtener las cookies del navegador
-
-Esta es la parte que requiere un poco más de atención. Seguí los pasos exactos para tu navegador y todo saldrá bien. 🙂
-
-### 0️⃣ Paso previo (igual para todos los navegadores)
-
-Antes de copiar las cookies, asegurate de que la sesión esté activa:
-
-1. Abrí tu navegador favorito (Chrome, Edge o Firefox).
-2. Navegá a: **https://produccion.uned.ac.cr/notasparciales/Formularios/CapturaNotas.aspx**
-3. Iniciá sesión normalmente con tus credenciales UNED.
-4. **Verificá que la página cargó correctamente:** debés ver los dropdowns de Año, PAC, Escuela, etc. Si ves una pantalla de login o una página en blanco, recargá con F5.
-
-> [!TIP]
-> 💡 Mantené esta pestaña del navegador **abierta** mientras usás el script. Así las cookies no expiran tan rápido.
-
----
-
-### 🌐 Google Chrome (Windows)
-
-<details open>
-<summary><strong>🖱️ Click para ver las instrucciones paso a paso</strong></summary>
-
-**1️⃣ Abrir las Herramientas de Desarrollador**
-
-- Presioná la tecla **`F12`** en tu teclado
-  - *Alternativa:* click derecho en cualquier parte de la página → **"Inspeccionar"**
-- Se abrirá un panel en la parte inferior o lateral de la ventana
-
-**2️⃣ Ir a la pestaña "Application"**
-
-- En la barra superior del panel de DevTools, buscá la pestaña que dice **"Application"**
-- Si no la ves, hacé click en el botón **`>>`** (doble flecha) para ver las pestañas ocultas
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Elements  Console  Sources  Network  ▶▶  Application  ...  │
-│                                           ^^^^^^^^^^^       │
-│                                           ESTA PESTAÑA     │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**3️⃣ Navegar a Cookies**
-
-- En el **panel izquierdo**, buscá la sección **"Storage"** (Almacenamiento)
-- Expandí **"Cookies"** haciendo click en el triángulo ▶
-- Hacé click en **`https://produccion.uned.ac.cr`**
-
-```
-┌──────────────────────────┬──────────────────────────────────┐
-│ Storage                  │  Name              │ Value       │
-│  ▼ Cookies               │  ASP.NET_SessionId │ abc123...   │ ← 📋 Copiar
-│    ► produccion.uned...  │  uzmx              │ A2B3C4...   │ ← 📋 Copiar
-│                          │  uzmxj             │ F7G8H9...   │ ← 📋 Copiar
-└──────────────────────────┴──────────────────────────────────┘
-```
-
-**4️⃣ Copiar cada valor**
-
-Para cada una de las 3 cookies (`ASP.NET_SessionId`, `uzmx`, `uzmxj`):
-
-1. 🖱️ Hacé **doble click** sobre el texto en la columna **"Value"**
-2. El texto se seleccionará automáticamente
-3. Presioná **`Ctrl + C`** para copiar
-4. Abrí tu archivo `.env` y pegá el valor con **`Ctrl + V`**
-
-Resultado en tu archivo `.env`:
-```ini
-NP_COOKIE_ASPNET_SESSIONID=abc123xyz789...
-NP_COOKIE_UZMX=A2B3C4D5E6F7...
-NP_COOKIE_UZMXJ=F7G8H9I0J1K2...
-```
-
-</details>
-
----
-
-### 🔵 Microsoft Edge (Windows)
-
-<details>
-<summary><strong>🖱️ Click para ver las instrucciones paso a paso</strong></summary>
-
-> 💡 Edge usa el mismo motor que Chrome, así que los pasos son **prácticamente idénticos**.
-
-**1️⃣ Abrir las Herramientas de Desarrollador**
-
-- Presioná **`F12`**
-  - *Alternativa:* click derecho → **"Inspeccionar"**
-  - *Alternativa:* menú `···` (arriba a la derecha) → "Más herramientas" → "Herramientas de desarrollo"
-
-**2️⃣ Ir a la pestaña "Aplicación"**
-
-- En la barra superior de DevTools, buscá **"Aplicación"** (puede aparecer en español si Edge está en español)
-- Si no la ves, hacé click en **`>>`** para ver pestañas ocultas
-- En inglés se llama **"Application"**
-
-**3️⃣ Navegar a Cookies**
-
-- Panel izquierdo → **"Almacenamiento"** (o "Storage") → **"Cookies"** → click en **`https://produccion.uned.ac.cr`**
-
-**4️⃣ Copiar cada valor**
-
-- Igual que en Chrome: **doble click** en la columna "Value" → **`Ctrl + C`** → pegar en `.env`
-
-Buscá las mismas 3 cookies:
-| Cookie | Variable en `.env` |
-|--------|-------------------|
-| `ASP.NET_SessionId` | `NP_COOKIE_ASPNET_SESSIONID` |
-| `uzmx` | `NP_COOKIE_UZMX` |
-| `uzmxj` | `NP_COOKIE_UZMXJ` |
-
-</details>
-
----
-
-### 🦊 Mozilla Firefox (Windows)
-
-<details>
-<summary><strong>🖱️ Click para ver las instrucciones paso a paso</strong></summary>
-
-**1️⃣ Abrir las Herramientas de Desarrollador**
-
-- Presioná **`F12`**
-  - *Alternativa:* click derecho → **"Inspeccionar"**
-  - *Alternativa:* menú ☰ → "Más herramientas" → "Herramientas para desarrolladores web"
-
-**2️⃣ Ir a la pestaña "Almacenamiento"**
-
-- En Firefox la pestaña se llama **"Almacenamiento"** (o **"Storage"** si está en inglés)
-- ⚠️ **No confundir** con "Red" ni con "Consola" — es **"Almacenamiento"**
-
-```
-┌────────────────────────────────────────────────────────────────┐
-│ Inspector  Consola  Depurador  Red  Almacenamiento  ...       │
-│                                     ^^^^^^^^^^^^^^             │
-│                                     ESTA PESTAÑA              │
-└────────────────────────────────────────────────────────────────┘
-```
-
-**3️⃣ Navegar a Cookies**
-
-- En el panel izquierdo, expandí **"Cookies"**
-- Hacé click en **`https://produccion.uned.ac.cr`**
-
-```
-┌──────────────────────────┬──────────────────────────────────┐
-│ Almacenamiento           │  Nombre             │ Valor      │
-│  ▼ Cookies               │  ASP.NET_SessionId  │ abc123...  │ ← 📋
-│    ► produccion.uned...  │  uzmx               │ A2B3C4...  │ ← 📋
-│                          │  uzmxj              │ F7G8H9...  │ ← 📋
-└──────────────────────────┴──────────────────────────────────┘
-```
-
-**4️⃣ Copiar cada valor**
-
-1. 🖱️ Hacé **doble click** sobre el valor de la cookie
-2. Se abrirá un campo de edición con el texto seleccionado
-3. Presioná **`Ctrl + C`** para copiar
-4. Pegá en tu archivo `.env` con **`Ctrl + V`**
-
-</details>
-
----
-
-### ⚡ Resumen rápido (para usuarios experimentados)
-
-| Navegador | Atajo | Ruta al panel de cookies |
-|-----------|-------|-------------------------|
-| 🌐 Chrome | `F12` | Application → Storage → Cookies → `produccion.uned.ac.cr` |
-| 🔵 Edge | `F12` | Aplicación → Almacenamiento → Cookies → `produccion.uned.ac.cr` |
-| 🦊 Firefox | `F12` | Almacenamiento → Cookies → `produccion.uned.ac.cr` |
-
-**Cookies a copiar:**
-
-| Cookie en el navegador | Variable en `.env` |
-|------------------------|-----------|
-| `ASP.NET_SessionId` | `NP_COOKIE_ASPNET_SESSIONID` |
-| `uzmx` | `NP_COOKIE_UZMX` |
-| `uzmxj` | `NP_COOKIE_UZMXJ` |
-
----
-
-### 🔄 ¿Qué hacer cuando las cookies expiran?
-
-Las cookies expiran tras **~20 minutos de inactividad** en el navegador.
-
-**🚨 Síntomas de cookies expiradas:**
-- El script muestra: `"respuesta no-JSON (Content-Type=...)"` 
-- O muestra: `"Probable expiración de cookies. Rfrescá las 3 cookies en .env"`
-
-**✅ Solución (30 segundos):**
-
-1. Volvé al navegador donde tenés abierta la página de Notas Parciales
-2. Presioná **`F5`** para recargar la página
-3. Esperá a que cargue completamente
-4. Repetí el proceso de copiar las 3 cookies (los valores cambiaron)
-5. Pegá los nuevos valores en `.env`
-6. Guardá `.env` y volvé a ejecutar el script
-
-> [!TIP]
-> 💡 **Truco para que duren más:** mantené la pestaña del navegador abierta y recargá la página (F5) **justo antes** de ejecutar el script. Así obtenés cookies frescas cada vez.
 
 ---
 
@@ -499,10 +308,43 @@ Columnas opcionales adicionales: `observacion_codigo`, `justificacion`.
 
 ## 🛠️ Modos de uso
 
-El script tiene 5 modos de operación. Los más comunes para carga masiva son **`plan`** + **`apply`**.
+El script tiene 6 modos de operación. Los más comunes para carga masiva son **`plan`** + **`apply`**.
+
+> [!TIP]
+> 🧭 **¿Perdido? ¿No sabés cuál es el próximo comando?** Ejecutá:
+> ```
+> python notasparciales_upload.py estado
+> ```
+> Te dice en qué paso vas y te da el comando exacto que sigue. No se conecta al servidor, no pide parámetros y no escribe nada. **Cada comando además termina indicándote el siguiente**, así que normalmente alcanza con copiar y pegar lo que el script te muestra.
+
+> [!TIP]
+> ⚡ **Flujo simplificado (recomendado):** los parámetros `--escuela`, `--catedra`,
+> `--encargado`, `--tutor` y `--modelo` son códigos internos del sistema que
+> cuesta recordar y son fáciles de escribir mal (un solo dígito trocado y el
+> servidor devuelve "0 estudiantes" sin ningún error). **Solo hace falta
+> pasarlos una vez**, en un `probe` exitoso: el script confirma que devuelven
+> datos reales y los guarda en `.notasparciales_context.json`, agrupados por
+> `--asignatura` + `--ano` + `--pac` + `--tipo`. De ahí en adelante, `single`,
+> `csv`, `plan` y `apply` los completan solos — el comando del día a día queda
+> así de corto:
+> ```bash
+> python notasparciales_upload.py plan --ano 2026 --pac 3 --asignatura 00883 --xlsx calificaciones_moodle.xlsx
+> ```
+> Además, en modo `plan` ya **no hace falta indicar `--cu-grupo`**: los CU se
+> leen solos de la columna "Institución" del xlsx, y el grupo de cada uno se
+> autodetecta contra el servidor (probando `grupo=1..15`, sin escribir nada, y
+> quedándose con el que tenga estudiantes cuya cédula coincide con el xlsx).
+> `--cu-grupo CU=GRUPO` sigue existiendo por si necesitás forzar un valor
+> manualmente. El archivo de cache **no tiene credenciales** — solo códigos de
+> curso — pero igual queda fuera de Git vía `.gitignore`, junto con el
+> `.xlsx` y los `plan.csv`, porque contienen datos de estudiantes.
 
 ```mermaid
 flowchart TB
+    subgraph ayuda ["🧭 Orientación"]
+        estado["🧭 estado\n¿En qué paso voy?\n¿Qué comando sigue?"]
+    end
+
     subgraph basicos ["🧪 Modos básicos"]
         probe["🔍 probe\nVerificar auth\ny descubrir instrumentos"]
         single["1️⃣ single\nSubir UNA nota\n(para probar)"]
@@ -516,26 +358,61 @@ flowchart TB
 
     probe --> plan
     plan --> apply
+    estado -.-> probe
+    estado -.-> plan
+    estado -.-> apply
 ```
 
 ---
 
-### 🔍 Modo `probe` — Verificar conexión
+### 🧭 Modo `estado` — ¿En qué paso voy?
 
-Verifica que tus credenciales funcionan y muestra los instrumentos de evaluación del modelo.
+Si cerraste la terminal, volviste al otro día, o simplemente no sabés qué sigue:
+
+```
+python notasparciales_upload.py estado
+```
+
+**🖥️ Salida de ejemplo:**
+```
+══════════════════════════════════════════════════════════════════════
+ ESTADO DEL PROCESO DE CARGA DE NOTAS
+══════════════════════════════════════════════════════════════════════
+ ✓ Credenciales configuradas (.env, usuario: jperez)
+ ✓ Cursos verificados: 1
+     · 03622  (año 2026, PAC 4)   verificado el 2026-08-19 22:47
+ ✓ Plan generado: notas_plan.csv (60 filas, 2026-08-19 22:48)
+     · 60 fila(s) pendientes de subir
+ ✓ Prueba realizada sin errores (60 fila(s))
+ ✗ Todavía no se subió ninguna nota al sistema
+══════════════════════════════════════════════════════════════════════
+ ▶ SIGUIENTE PASO:
+
+   Ya hiciste la prueba y salió bien. Este comando SÍ escribe
+   las notas de verdad en el sistema de la UNED:
+
+   python notasparciales_upload.py apply --ano 2026 --pac 4 --asignatura 03622 --plan notas_plan.csv --commit
+══════════════════════════════════════════════════════════════════════
+```
+
+> [!NOTE]
+> `estado` **solo mira archivos de tu computadora**: no se conecta al servidor de la UNED, no necesita parámetros y nunca escribe nada. Podés ejecutarlo cuantas veces quieras.
+
+---
+
+### 🔍 Modo `probe` — Verificar conexión (y guardar el contexto)
+
+Verifica que tus credenciales funcionan y muestra los instrumentos de evaluación del modelo. **Corré esto una vez por curso** con todos los parámetros — si devuelve instrumentos y estudiantes reales, queda guardado para que los demás modos no te los vuelvan a pedir.
 
 ```bash
-python notasparciales_upload.py probe \
-    --ano 2026 --pac 3 --tipo O \
-    --escuela 03 --catedra 253 \
-    --encargado ARODRIGUEZP --tutor 0401780367 \
-    --asignatura 00883 --cu 42 --grupo 1 --modelo 4
+python notasparciales_upload.py probe --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 0401780367 --asignatura 00883 --cu 42 --grupo 1 --modelo 4
 ```
 
 **🖥️ Salida esperada:**
 ```
-== Probando autenticación ==
-OK: cookies válidas, el sistema está abierto.
+========================================
+AUTENTICACIÓN EXITOSA
+========================================
 
 == Nota mínima para 00883 ==
 Nota mínima de aprobación: 7
@@ -549,10 +426,16 @@ Mapeo Codigo -> Nombre del instrumento:
 
 == Cargando tabla del grupo (resumen) ==
 Estudiantes en el grupo: 25
+
+✓ Contexto guardado en .notasparciales_context.json para --asignatura 00883
+  (ano=2026 pac=3 tipo=O). Las próximas corridas de plan/apply/single/csv
+  pueden omitir --escuela/--catedra/--encargado/--tutor/--modelo.
 ```
 
 > [!TIP]
-> 💡 **Siempre empezá con `probe`** para confirmar que las cookies y credenciales funcionan antes de hacer cualquier otra operación.
+> 💡 **Siempre empezá con `probe`** para confirmar que las credenciales funcionan antes de hacer cualquier otra operación.
+>
+> Si en cambio ves **"⚠ ADVERTENCIA: 0 estudiantes"** o **"ningún instrumento de evaluación"**, la sesión sí se autenticó — el problema es que algún parámetro (`--asignatura`, `--modelo`, `--cu` o `--grupo`) no corresponde a un grupo real. El servidor no da error en ese caso, simplemente devuelve tablas vacías, así que si ves eso revisá los valores contra los dropdowns de la página antes de asumir que el script está roto.
 
 ---
 
@@ -562,20 +445,13 @@ Ideal para **probar** que todo funciona antes de hacer una carga masiva.
 
 ```bash
 # Primero con --dry-run (NO escribe nada):
-python notasparciales_upload.py single \
-    --ano 2026 --pac 3 --tipo O \
-    --escuela 03 --catedra 253 \
-    --encargado ARODRIGUEZP --tutor 0401780367 \
-    --asignatura 00883 --cu 42 --grupo 1 --modelo 4 \
-    --cedula 0117540192 --instrumento Tar1 --nota 8.9 \
-    --dry-run
+python notasparciales_upload.py single --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 0401780367 --asignatura 00883 --cu 42 --grupo 1 --modelo 4 --cedula 0117540192 --instrumento Tar1 --nota 8.9 --dry-run
 ```
 
 Si todo se ve bien, ejecutá **sin `--dry-run`** (agregando `--commit`):
 
 ```bash
-python notasparciales_upload.py single \
-    ... --commit
+python notasparciales_upload.py single ... --commit
 ```
 
 ---
@@ -583,13 +459,7 @@ python notasparciales_upload.py single \
 ### 📄 Modo `csv` — Subir un CSV con muchas notas
 
 ```bash
-python notasparciales_upload.py csv \
-    --ano 2026 --pac 3 --tipo O \
-    --escuela 03 --catedra 253 \
-    --encargado ARODRIGUEZP --tutor 0401780367 \
-    --asignatura 00883 --cu 42 --grupo 1 --modelo 4 \
-    --upload-csv notas.csv \
-    --dry-run
+python notasparciales_upload.py csv --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 0401780367 --asignatura 00883 --cu 42 --grupo 1 --modelo 4 --upload-csv notas.csv --dry-run
 ```
 
 ---
@@ -598,22 +468,29 @@ python notasparciales_upload.py csv \
 
 Este es el modo **recomendado** para cargas masivas. Lee el xlsx exportado de Moodle, consulta el estado actual del servidor, y genera un `plan.csv` que podés revisar antes de ejecutar.
 
+Si ya corriste `probe` para esta asignatura+ano+pac, el comando se reduce a esto — ni `--cu-grupo` hace falta, se autodetecta:
+
 ```bash
-python notasparciales_upload.py plan \
-    --ano 2026 --pac 3 --tipo O \
-    --escuela 03 --catedra 253 \
-    --encargado ARODRIGUEZP --tutor 0401780367 \
-    --asignatura 00883 --modelo 4 \
-    --xlsx calificaciones_moodle.xlsx \
-    --cu-grupo 42=1 --cu-grupo 01=2 \
-    --output notas_plan.csv
+python notasparciales_upload.py plan --ano 2026 --pac 3 --asignatura 00883 --xlsx calificaciones_moodle.xlsx --output notas_plan.csv
 ```
 
-**¿Qué significa `--cu-grupo 42=1 --cu-grupo 01=2`?**
+La primera vez (o si el cache no tiene esta asignatura todavía), pasá todos los parámetros explícitos:
 
-Mapea cada centro universitario (CU) al número de grupo en Notas Parciales:
-- `42=1` → CU 42 (Desamparados) = Grupo 1
-- `01=2` → CU 01 (San José) = Grupo 2
+```bash
+python notasparciales_upload.py plan --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 0401780367 --asignatura 00883 --modelo 4 --xlsx calificaciones_moodle.xlsx --output notas_plan.csv
+```
+
+**¿Cómo se resuelve el CU → grupo si no paso `--cu-grupo`?**
+
+Los CU se extraen solos de la columna "Institución" del xlsx (ej. `"DESAMPARADOS (42)"` → CU `42`). Para cada uno, el script prueba `grupo=1..15` contra el servidor (solo lectura) y se queda con el grupo cuyo roster tenga cédulas que coinciden con las del xlsx para ese CU. Si no encuentra ninguna coincidencia, te lo dice explícitamente en la consola en vez de fallar en silencio, y podés forzarlo a mano:
+
+```bash
+--cu-grupo 42=1 --cu-grupo 01=2
+```
+- `42=1` → CU 42 (Desamparados) = Grupo 1 (forzado, no se autodetecta)
+- `01=2` → CU 01 (San José) = Grupo 2 (forzado, no se autodetecta)
+
+Cualquier CU que no pases explícito en `--cu-grupo` se autodetecta; podés mezclar ambos (algunos forzados, el resto automático).
 
 **📄 El plan.csv generado contiene:**
 
@@ -648,23 +525,11 @@ Mapea cada centro universitario (CU) al número de grupo en Notas Parciales:
 Ejecuta las acciones del `plan.csv` generado en el paso anterior.
 
 ```bash
-# Primero SIEMPRE en dry-run:
-python notasparciales_upload.py apply \
-    --ano 2026 --pac 3 --tipo O \
-    --escuela 03 --catedra 253 \
-    --encargado ARODRIGUEZP --tutor 0401780367 \
-    --asignatura 00883 --modelo 4 \
-    --plan notas_plan.csv \
-    --dry-run
+# Primero SIEMPRE en dry-run (con el contexto ya cacheado por probe/plan):
+python notasparciales_upload.py apply --ano 2026 --pac 3 --asignatura 00883 --plan notas_plan.csv --dry-run
 
 # Cuando estés seguro, con --commit:
-python notasparciales_upload.py apply \
-    --ano 2026 --pac 3 --tipo O \
-    --escuela 03 --catedra 253 \
-    --encargado ARODRIGUEZP --tutor 0401780367 \
-    --asignatura 00883 --modelo 4 \
-    --plan notas_plan.csv \
-    --commit
+python notasparciales_upload.py apply --ano 2026 --pac 3 --asignatura 00883 --plan notas_plan.csv --commit
 ```
 
 Al terminar, se genera un archivo `notas_plan_resultados.csv` con el estado de cada operación.
@@ -677,12 +542,13 @@ Este es el proceso completo que recomendamos para subir notas de forma segura:
 
 ```mermaid
 flowchart TD
-    Start(["🏁 Inicio"]) --> Step1
+    Start(["🏁 Inicio"]) --> Step0
+    Step0["0️⃣ Ejecutar instalar.bat\n(una sola vez)"] --> Step1
     Step1["1️⃣ Exportar xlsx\ndesde Moodle"] --> Step2
-    Step2["2️⃣ Configurar .env\n(NTLM + cookies)"] --> Step3
-    Step3["3️⃣ Ejecutar probe\npara verificar auth"] --> Check1
+    Step2["2️⃣ Configurar .env\n(usuario y contraseña SSO)"] --> Step3
+    Step3["3️⃣ Ejecutar probe\npara verificar auth\ny cachear contexto"] --> Check1
     Check1{"🔍 ¿Probe exitoso?"}
-    Check1 -- "❌ No" --> Fix1["Revisar cookies\ny credenciales"]
+    Check1 -- "❌ No" --> Fix1["Revisar credenciales\ny parámetros del curso"]
     Fix1 --> Step2
     Check1 -- "✅ Sí" --> Step4
     Step4["4️⃣ Ejecutar plan\ncon el xlsx"] --> Step5
@@ -702,40 +568,27 @@ flowchart TD
 
 ### Comandos resumidos
 
-```bash
-# 1. Verificar autenticación
-python notasparciales_upload.py probe \
-    --ano 2026 --pac 3 --tipo O \
-    --escuela 03 --catedra 253 \
-    --encargado ARODRIGUEZP --tutor 0401780367 \
-    --asignatura 00883 --cu 42 --grupo 1 --modelo 4
+> [!TIP]
+> 🧭 No hace falta memorizar esta secuencia: **cada comando termina mostrándote el siguiente**, ya con tus valores. Y si te perdés, `python notasparciales_upload.py estado` te dice dónde estás parado.
 
-# 2. Generar plan desde xlsx
-python notasparciales_upload.py plan \
-    --ano 2026 --pac 3 --tipo O \
-    --escuela 03 --catedra 253 \
-    --encargado ARODRIGUEZP --tutor 0401780367 \
-    --asignatura 00883 --modelo 4 \
-    --xlsx calificaciones_moodle.xlsx \
-    --cu-grupo 42=1 --cu-grupo 01=2
+```bash
+# 0. (En cualquier momento) ¿En qué paso voy?
+python notasparciales_upload.py estado
+
+# 1. Verificar autenticación (con TODOS los parámetros la primera vez —
+#    si sale bien, queda cacheado para los pasos 2-5)
+python notasparciales_upload.py probe --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 0401780367 --asignatura 00883 --cu 42 --grupo 1 --modelo 4
+
+# 2. Generar plan desde xlsx (CU-grupo se autodetecta solo)
+python notasparciales_upload.py plan --ano 2026 --pac 3 --asignatura 00883 --xlsx calificaciones_moodle.xlsx
 
 # 3. Revisar notas_plan.csv en Excel...
 
 # 4. Dry-run del plan
-python notasparciales_upload.py apply \
-    --ano 2026 --pac 3 --tipo O \
-    --escuela 03 --catedra 253 \
-    --encargado ARODRIGUEZP --tutor 0401780367 \
-    --asignatura 00883 --modelo 4 \
-    --plan notas_plan.csv --dry-run
+python notasparciales_upload.py apply --ano 2026 --pac 3 --asignatura 00883 --plan notas_plan.csv --dry-run
 
 # 5. Ejecutar de verdad
-python notasparciales_upload.py apply \
-    --ano 2026 --pac 3 --tipo O \
-    --escuela 03 --catedra 253 \
-    --encargado ARODRIGUEZP --tutor 0401780367 \
-    --asignatura 00883 --modelo 4 \
-    --plan notas_plan.csv --commit
+python notasparciales_upload.py apply --ano 2026 --pac 3 --asignatura 00883 --plan notas_plan.csv --commit
 ```
 
 ---
@@ -771,16 +624,18 @@ Estos parámetros identifican **exactamente** a qué grupo y modelo de evaluaci�
 | `--ano` | texto | ✅ | Año académico | `2026` |
 | `--pac` | texto | ✅ | Período académico (cuatrimestre) | `3` |
 | `--tipo` | texto | ❌ | Tipo de matrícula (default: `O` = Ordinaria) | `O` |
-| `--escuela` | texto | ✅ | Código de escuela | `03` |
-| `--catedra` | entero | ✅ | ID numérico de cátedra | `253` |
-| `--encargado` | texto | ✅ | Username del encargado de cátedra | `ARODRIGUEZP` |
-| `--tutor` | texto | ✅ | Cédula del tutor | `0401780367` |
-| `--asignatura` | texto | ✅ | Sigla del curso | `00883` |
-| `--cu` | texto | ✅* | Código del centro universitario | `42` |
-| `--grupo` | entero | ✅* | Número de grupo | `1` |
-| `--modelo` | entero | ✅ | Modelo de evaluación | `4` |
+| `--asignatura` | texto | ✅ | Sigla del curso (también es la clave del cache) | `00883` |
+| `--escuela` | texto | ✅¹ | Código de escuela | `03` |
+| `--catedra` | entero | ✅¹ | ID numérico de cátedra | `253` |
+| `--encargado` | texto | ✅¹ | Username del encargado de cátedra | `ARODRIGUEZP` |
+| `--tutor` | texto | ✅¹ | Cédula del tutor | `0401780367` |
+| `--modelo` | entero | ✅¹ | Modelo de evaluación | `4` |
+| `--cu` | texto | ✅² | Código del centro universitario | `42` |
+| `--grupo` | entero | ✅² | Número de grupo | `1` |
 
-> *En los modos `plan` y `apply`, `--cu` y `--grupo` no son requeridos porque se infieren del xlsx y del parámetro `--cu-grupo`.
+> ¹ `--escuela`/`--catedra`/`--encargado`/`--tutor`/`--modelo` solo son obligatorios si no hay un cache guardado para esta `--asignatura`+`--ano`+`--pac`+`--tipo` (ver `.notasparciales_context.json`, generado por un `probe` exitoso). Si los pasás explícitos, tienen prioridad sobre el cache.
+>
+> ² En los modos `plan` y `apply`, `--cu` y `--grupo` no son requeridos porque se infieren del xlsx (CU) y se autodetectan contra el servidor (grupo), salvo que los fuerces con `--cu-grupo`.
 
 ### 🔧 Parámetros de control
 
@@ -799,7 +654,7 @@ Estos parámetros identifican **exactamente** a qué grupo y modelo de evaluaci�
 | Parámetro | Descripción |
 |-----------|-------------|
 | `--xlsx <ruta>` | Ruta al xlsx exportado de Moodle. Se puede repetir para varios archivos. |
-| `--cu-grupo <CU=GRUPO>` | Mapeo CU → grupo. Repetible. Ej: `--cu-grupo 42=1 --cu-grupo 01=2` |
+| `--cu-grupo <CU=GRUPO>` | **Opcional.** Fuerza el grupo de un CU en vez de autodetectarlo. Repetible. Ej: `--cu-grupo 42=1 --cu-grupo 01=2` |
 | `--map <COL=CODIGO>` | Mapeo manual de columna del xlsx a código de instrumento. Ej: `--map 'Tarea: Entrega Actividad Proyecto Final (Real)=Proy1'` |
 | `--output <ruta>` | Ruta al CSV de salida (default: `notas_plan.csv`). |
 
@@ -809,6 +664,12 @@ Estos parámetros identifican **exactamente** a qué grupo y modelo de evaluaci�
 |-----------|-------------|
 | `--plan <ruta>` | Ruta al `plan.csv` generado por el modo `plan`. |
 | `--no-mark-not-presented` | No ejecutar las filas con acción `mark_not_presented`. |
+
+### 🧭 Parámetros específicos del modo `estado`
+
+| Parámetro | Descripción |
+|-----------|-------------|
+| `--plan <ruta>` | Plan a inspeccionar (default `notas_plan.csv`). No requiere ningún otro parámetro. |
 
 ---
 
@@ -835,18 +696,28 @@ flowchart LR
 
 ## 🩺 Solución de problemas
 
+> [!TIP]
+> 🧭 **Antes que nada, probá `estado`.** Te dice qué pasos ya se completaron y cuál es el siguiente comando, sin conectarse al servidor ni modificar nada:
+> ```
+> .venv\Scripts\python.exe notasparciales_upload.py estado
+> ```
+> Si el problema es con la **instalación** (y no con la carga de notas), mirá [🩺 Si el instalador falla](#-si-el-instalador-falla).
+
 | # | 🚨 Síntoma | 💡 Causa probable | ✅ Solución |
 |---|-----------|-------------------|-----------|
-| 1 | `"respuesta no-JSON"` o `"Probable expiración de cookies"` | Las cookies expiraron (~20 min sin actividad) | Recargá la página en el navegador (F5), copiá las 3 cookies nuevamente al `.env` |
+| 1 | `"respuesta no-JSON"` | La sesión ASP.NET expiró a mitad de una corrida larga | Volvé a ejecutar el comando: el script rehace el handshake NTLM solo |
 | 2 | `HTTP 401` o `"WWW-Authenticate: Negotiate"` | Credenciales NTLM incorrectas o faltantes | Verificá `NP_NTLM_USER` y `NP_NTLM_PASSWORD` en `.env`. El usuario es sin `@uned.ac.cr` |
-| 3 | `"Faltan cookies en .env"` | El archivo `.env` no tiene las 3 cookies | Seguí la guía [🍪 Cómo obtener las cookies](#-cómo-obtener-las-cookies-del-navegador) |
+| 3 | `"Faltan credenciales NTLM"` | El `.env` no tiene usuario y/o contraseña | Completá `NP_NTLM_USER` y `NP_NTLM_PASSWORD` en `.env` (ver [🔑 Configuración de credenciales](#-configuración-de-credenciales)) |
 | 4 | `"Instrumento X no existe en este modelo"` | El código de instrumento no coincide con el modelo del servidor | Ejecutá `probe` para ver los códigos válidos (Tar1, Tar2, Proy1, etc.) |
 | 5 | `"Cédula no aparece en el roster oficial del grupo"` | La cédula del xlsx no está en el grupo de Notas Parciales | Verificá que el campo "Número de ID" en Moodle tenga la cédula correcta |
 | 6 | `"would_overwrite"` en el plan | El servidor ya tiene una nota diferente a la del xlsx | Si querés sobrescribir, usá `--allow-update` con `--justificacion-codigo` |
 | 7 | `"El servidor no permite el cambio"` | La nota está bloqueada (período cerrado o restricción administrativa) | Contactá al encargado de cátedra |
-| 8 | `"openpyxl no está instalado"` | Falta la dependencia para leer xlsx | Ejecutá `pip install openpyxl` (o re-ejecutá `instalar.bat`) |
-| 9 | `"Falta la dependencia requests-ntlm"` | Falta la dependencia para autenticación NTLM | Ejecutá `pip install requests-ntlm` (o re-ejecutá `instalar.bat`) |
+| 8 | `"openpyxl no está instalado"` | Falta la dependencia para leer xlsx | Volvé a ejecutar `instalar.bat` (es seguro: no borra tu `.env` ni tus notas) |
+| 9 | `"Falta la dependencia requests-ntlm"` | Falta la dependencia para autenticación NTLM | Volvé a ejecutar `instalar.bat` (es seguro: no borra tu `.env` ni tus notas) |
 | 10 | El plan dice `"SIN MAPEO"` para una columna | El script no pudo asociar la columna del xlsx con un instrumento del servidor | Usá `--map 'Nombre Columna (Real)=Tar1'` para forzar el mapeo manualmente |
+| 11 | `⚠ ADVERTENCIA: 0 estudiantes` / `ningún instrumento` en `probe` o `plan`, pero la autenticación fue exitosa | Algún código de contexto no corresponde a un grupo real (`--asignatura`, `--modelo`, `--cu`, `--grupo` o `--pac`). El servidor no da error en ese caso, simplemente devuelve tablas vacías | Revisá esos valores contra los dropdowns de la página. **No** es un problema de login/`.env` si la autenticación salió "EXITOSA" |
+| 12 | `"Leídos 0 registros"` / `"Columnas de nota detectadas: []"` en `plan` | El xlsx no tiene columnas con `(Real)`/`(Porcentaje)` — es un export "simple" de Moodle con columnas de nota sin sufijo | Ya soportado: cualquier columna que no sea `Nombre`/`Apellido(s)`/`Número de ID`/`Institución` (ni un campo conocido no-nota) se trata como columna de nota. Si igual da 0, revisá que el xlsx tenga esas 4 columnas exactas |
+| 13 | `"CU=X: no se pudo detectar el grupo automáticamente"` en `plan` | Se probó `grupo=1..15` para ese CU y ninguno tuvo cédulas del xlsx en común | Puede ser que el grupo real sea >15, o que esos estudiantes del xlsx todavía no estén matriculados oficialmente en ese CU/asignatura/pac. Forzalo con `--cu-grupo CU=N` si conocés el valor correcto |
 
 <details>
 <summary>🔍 <strong>¿Cómo activar el modo verbose para más detalle?</strong></summary>
@@ -854,8 +725,7 @@ flowchart LR
 Agregá `-v` (info) o `-vv` (debug) al comando para ver exactamente qué está enviando el script:
 
 ```bash
-python notasparciales_upload.py -vv probe \
-    --ano 2026 --pac 3 ...
+python notasparciales_upload.py -vv probe --ano 2026 --pac 3 ...
 ```
 
 El modo debug muestra cada request HTTP, los payloads JSON enviados, y las respuestas del servidor.
@@ -872,12 +742,16 @@ Git es un sistema de control de versiones que **registra y publica** todos los a
 En este proyecto, `.gitignore` contiene:
 
 ```
-.env              ← Tu archivo con contraseñas y cookies
-__pycache__/      ← Archivos temporales de Python
-dist/             ← Ejecutables generados
-build/            ← Archivos de compilación
-*.spec            ← Configuración de PyInstaller
-.venv/            ← Entorno virtual de Python
+.env                            ← Tu archivo con usuario y contraseña
+__pycache__/                    ← Archivos temporales de Python
+dist/                           ← Ejecutables generados
+build/                          ← Archivos de compilación
+*.spec                          ← Configuración de PyInstaller
+.venv/                          ← Entorno virtual de Python
+.notasparciales_context.json    ← Cache de códigos de curso (sin credenciales)
+notas_plan.csv                  ← Plan generado (contiene datos de estudiantes)
+notas_plan_resultados.csv       ← Resultados de la carga
+*.xlsx                          ← Calificaciones exportadas de Moodle
 ```
 
 ### ⚠️ ¿Por qué es peligroso NO usar `.gitignore`?
@@ -885,7 +759,8 @@ build/            ← Archivos de compilación
 Sin `.gitignore`, al ejecutar `git add .` y `git push`, **todos los archivos de la carpeta se suben al repositorio**, incluyendo tu archivo `.env` con:
 
 - 🔑 Tu **usuario y contraseña** del SSO UNED (`NP_NTLM_USER`, `NP_NTLM_PASSWORD`)
-- 🍪 Tus **cookies de sesión** (`NP_COOKIE_*`)
+
+Y además, los archivos de trabajo con **datos personales de estudiantes** (cédulas, nombres y notas): el `.xlsx` exportado de Moodle y los `notas_plan*.csv` generados por el script.
 
 > [!CAUTION]
 > 🚨 **Si tu `.env` se sube a GitHub, cualquier persona con acceso al repositorio podría:**
@@ -897,24 +772,22 @@ Sin `.gitignore`, al ejecutar `git add .` y `git push`, **todos los archivos de 
 
 Incluso si borrás el archivo después, **Git conserva el historial**: los secretos seguirán accesibles en commits anteriores a menos que se reescriba la historia del repositorio (un proceso complejo y no siempre viable en repos públicos).
 
-### 🍪 Sobre las cookies y su seguridad
+### 🔐 Sobre las credenciales y la sesión
 
-Las cookies (`ASP.NET_SessionId`, `uzmx`, `uzmxj`) son **tokens de sesión temporales**. Algunos puntos importantes:
+Tu `.env` contiene **usuario y contraseña del SSO UNED en texto plano**. Esas credenciales no expiran solas y sirven para todos los sistemas UNED, así que son el secreto más sensible de este proyecto.
 
 | Aspecto | Detalle |
 |---------|--------|
-| ⏱️ **Duración** | Expiran tras ~20 minutos de inactividad. Son de corta vida. |
-| 🔗 **Alcance** | Solo funcionan para `produccion.uned.ac.cr/notasparciales`. No sirven para otros sitios. |
-| 🔄 **Renovación** | Cambian cada vez que recargás la página. Las cookies viejas dejan de funcionar. |
-| 🧩 **Sin las credenciales NTLM** | Las cookies **solas** no bastan para acceder al sistema. Se necesitan **ambas** capas (NTLM + cookies) simultáneamente. |
+| 🔑 **Credenciales (`.env`)** | Permanentes hasta que cambiés la contraseña. Dan acceso a correo, entorno de funcionarios y Notas Parciales. **Tratalas como cualquier otra contraseña institucional.** |
+| 🍪 **Cookies de sesión** | Las emite el servidor durante el handshake NTLM y viven solo en memoria mientras corre el script. **No se guardan en disco ni hay que copiarlas a mano.** |
+| 📄 **Cache de contexto** | `.notasparciales_context.json` guarda **solo códigos de curso** (escuela, cátedra, encargado, tutor, modelo). No contiene credenciales ni datos de estudiantes. |
 
 > [!IMPORTANT]
 > 📌 **Buenas prácticas:**
 > - ✅ **Nunca** subas `.env` a Git (el `.gitignore` de este proyecto ya lo previene)
 > - ✅ **Nunca** compartas tu archivo `.env` por correo, WhatsApp o chat
 > - ✅ Si sospechás que tus credenciales se filtraron, **cambiá tu contraseña del SSO UNED inmediatamente**
-> - ✅ Cerrá la sesión del navegador cuando terminés de usar el script
-> - ✅ Las cookies expiran solas, pero cerrar sesión las invalida antes
+> - ✅ Tampoco subas los `.xlsx` ni los `notas_plan*.csv`: llevan cédulas, nombres y notas de estudiantes
 
 ### 🔍 ¿Cómo verificar que `.gitignore` está funcionando?
 

@@ -12,34 +12,28 @@ recargar fila) son POST a `CapturaNotas.aspx/<webMethod>` con bodies JSON.
 
 Autenticación
 -------------
-Para evitar tener que reproducir el SSO institucional, este script usa el
-patrón "bring-your-own-cookies": vos te logueás normalmente en el navegador,
-copiás las 3 cookies de sesión a `.env`, y el script las usa.
+El script utiliza autenticación NTLM contra IIS con las credenciales
+NP_NTLM_USER y NP_NTLM_PASSWORD.
 
-Cookies en `.env`:
-    NP_COOKIE_ASPNET_SESSIONID
-    NP_COOKIE_UZMX
-    NP_COOKIE_UZMXJ
-
-Las cookies expiran en horas. Si el script falla con HTTP 200 + redirect a
-login en la respuesta, hay que refrescar las cookies.
+Después de autenticarse, requests mantiene automáticamente las cookies
+ASP.NET e Imperva necesarias para la sesión.
 
 Modos de uso
 ------------
 1. Verificar autenticación y descubrir contexto (curso/grupo/instrumentos):
-       python notasparciales_upload.py --probe \
+       python notasparciales_upload.py probe \
            --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 \
            --encargado ARODRIGUEZP --tutor 0401780367 \
            --asignatura 00883 --cu 42 --grupo 1 --modelo 4
 
 2. Subir UNA nota de prueba (siempre con --dry-run primero):
-       python notasparciales_upload.py --single \
+       python notasparciales_upload.py --dry-run single \
            --cedula 0117540192 --instrumento Tar1 --nota 8.9 \
-           --ano 2026 --pac 3 --tipo O ... --dry-run
+           --ano 2026 --pac 3 --tipo O ... 
 
 3. Subir un CSV (formato: cedula,instrumento,nota[,observacion_codigo]):
-       python notasparciales_upload.py --upload-csv notas.csv \
-           --ano 2026 --pac 3 --tipo O ... --dry-run
+       python notasparciales_upload.py --dry-run upload-csv notas.csv \
+           --ano 2026 --pac 3 --tipo O ...
 
 Filosofía
 ---------
@@ -66,10 +60,10 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
-
+from typing import Any
 import requests
 from dotenv import load_dotenv
+
 
 
 # ---------------------------------------------------------------------------
@@ -77,21 +71,10 @@ from dotenv import load_dotenv
 # ---------------------------------------------------------------------------
 BASE = "https://produccion.uned.ac.cr/notasparciales"
 PAGE = f"{BASE}/Formularios/CapturaNotas.aspx"
-ORIGIN = "https://produccion.uned.ac.cr"
-
-# Headers que el navegador siempre envía en cada PageMethod call.
 COMMON_HEADERS = {
-    "Accept": "application/json, text/javascript, */*; q=0.01",
     "Content-Type": "application/json; charset=utf-8",
+    "Accept": "application/json, text/javascript, */*; q=0.01",
     "X-Requested-With": "XMLHttpRequest",
-    "Origin": ORIGIN,
-    "Referer": PAGE,
-    "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-    # Imitar Firefox 150 (lo que aparece en el HAR del usuario)
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:150.0) "
-        "Gecko/20100101 Firefox/150.0"
-    ),
 }
 
 # `_peTipo` para el endpoint funCodigoDescripcion (combo loader genérico).
@@ -157,18 +140,114 @@ class Auth:
     está logueado y qué grupo/curso está viendo).
     """
 
-    aspnet_sessionid: str
-    uzmx: str
-    uzmxj: str
     ntlm_user: str = ""        # ej. "chernandeza"
     ntlm_password: str = ""    # password del SSO UNED
 
-    def to_cookie_dict(self) -> dict[str, str]:
-        return {
-            "ASP.NET_SessionId": self.aspnet_sessionid,
-            "uzmx": self.uzmx,
-            "uzmxj": self.uzmxj,
-        }
+
+# ---------------------------------------------------------------------------
+# Cache local de contexto: una vez que `probe` confirma que un combo de
+# escuela/catedra/encargado/tutor/modelo devuelve datos reales para una
+# asignatura+ano+pac+tipo, lo guardamos acá. Así el profesor no tiene que
+# volver a teclear esos códigos en cada corrida de plan/apply/single/csv.
+# ---------------------------------------------------------------------------
+CONTEXT_CACHE_PATH = Path(".notasparciales_context.json")
+_CACHED_FIELDS = ("escuela", "catedra", "encargado", "tutor", "modelo")
+
+
+def _cache_key(asignatura: str, ano: str, pac: str, tipo: str) -> str:
+    return f"{asignatura}|{ano}|{pac}|{tipo}"
+
+
+def _load_context_cache() -> dict[str, dict[str, Any]]:
+    if not CONTEXT_CACHE_PATH.exists():
+        return {}
+    try:
+        return json.loads(CONTEXT_CACHE_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_context_cache(ctx: "Context") -> None:
+    cache = _load_context_cache()
+    key = _cache_key(ctx.asignatura, ctx.ano, ctx.pac, ctx.tipo)
+    entry = {field: getattr(ctx, field) for field in _CACHED_FIELDS}
+    # Timestamp para que `estado` pueda decir cuándo se verificó el curso.
+    # No es un campo de contexto: _apply_context_cache solo lee _CACHED_FIELDS.
+    entry["_guardado"] = time.strftime("%Y-%m-%d %H:%M")
+    cache[key] = entry
+    CONTEXT_CACHE_PATH.write_text(
+        json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def _apply_context_cache(args: argparse.Namespace) -> list[str]:
+    """
+    Rellena los campos de contexto que falten (escuela/catedra/encargado/
+    tutor/modelo) desde el cache local, si hay una entrada guardada para
+    esta asignatura+ano+pac+tipo. Devuelve los nombres de los campos que se
+    rellenaron (para loguear qué vino de cache vs qué pasó el usuario).
+    """
+    cache = _load_context_cache()
+    key = _cache_key(args.asignatura, args.ano, args.pac, args.tipo)
+    entry = cache.get(key)
+    filled: list[str] = []
+    if not entry:
+        return filled
+    for field in _CACHED_FIELDS:
+        if getattr(args, field, None) is None:
+            setattr(args, field, entry[field])
+            filled.append(field)
+    return filled
+
+
+# ---------------------------------------------------------------------------
+# Guía al usuario: cada comando termina diciendo en qué paso va y cuál es el
+# comando exacto que sigue, ya con los valores que el profesor usó. La idea es
+# que nunca tenga que armar un comando a mano ni volver al README.
+#
+# IMPORTANTE: los comandos sugeridos se imprimen SIEMPRE en UNA sola línea.
+# Ni cmd.exe ni PowerShell entienden la continuación con "\" que se usa en
+# los ejemplos de Unix, así que un comando multilínea copiado y pegado falla.
+# ---------------------------------------------------------------------------
+GUIDE_WIDTH = 70
+GUIDE_RULE = "═" * GUIDE_WIDTH
+PLAN_DEFAULT = "notas_plan.csv"
+
+
+def _invocation() -> str:
+    """Cómo se está ejecutando el script, para sugerir comandos copiables."""
+    if getattr(sys, "frozen", False):  # ejecutable armado con PyInstaller
+        return Path(sys.executable).name
+    return f"python {Path(sys.argv[0]).name}"
+
+
+def _ctx_flags(ctx: "Context") -> str:
+    """Los flags mínimos de contexto: el resto sale del cache."""
+    flags = f"--ano {ctx.ano} --pac {ctx.pac} --asignatura {ctx.asignatura}"
+    if ctx.tipo != "O":
+        flags += f" --tipo {ctx.tipo}"
+    return flags
+
+
+def _guess_xlsx() -> str | None:
+    """Si hay UN solo xlsx en la carpeta, lo usamos en el comando sugerido."""
+    files = [
+        f for f in sorted(Path(".").glob("*.xlsx"))
+        if not f.name.startswith("~$")  # archivos de bloqueo de Excel
+    ]
+    return files[0].name if len(files) == 1 else None
+
+
+def _guide(title: str, body: list[str]) -> None:
+    """Imprime un bloque de guía al final de un comando."""
+    print()
+    print(GUIDE_RULE)
+    print(f" {title}")
+    print(GUIDE_RULE)
+    for line in body:
+        print(line)
+    print(GUIDE_RULE)
+    print()
 
 
 # ---------------------------------------------------------------------------
@@ -191,64 +270,228 @@ JUSTIFICACION_NO_PRESENTO = "NO PRESENTÓ O ENTREGÓ LA EVALUACION"
 # ---------------------------------------------------------------------------
 class NotasParcialesClient:
     """Cliente de bajo nivel para los PageMethods de CapturaNotas.aspx."""
-
     def __init__(self, auth: Auth, *, timeout: float = 30.0):
-        self.session = requests.Session()
-        self.session.cookies.update(auth.to_cookie_dict())
-        self.session.headers.update(COMMON_HEADERS)
+        self.auth = auth
         self.timeout = timeout
-        # Autenticación NTLM a nivel IIS. Sin esto el server responde 401
-        # con WWW-Authenticate: Negotiate/NTLM antes de mirar las cookies.
-        if auth.ntlm_user and auth.ntlm_password:
-            try:
-                from requests_ntlm import HttpNtlmAuth
-            except ImportError as ex:  # pragma: no cover
-                raise SystemExit(
-                    "Falta la dependencia `requests-ntlm`. Instalala con:\n"
-                    "    pip install requests-ntlm\n"
-                    f"(detalle: {ex})"
-                ) from ex
-            self.session.auth = HttpNtlmAuth(auth.ntlm_user, auth.ntlm_password)
+
+        if not auth.ntlm_user or not auth.ntlm_password:
+            raise SystemExit(
+                "Faltan credenciales NTLM.\n"
+                "Configura NP_NTLM_USER y NP_NTLM_PASSWORD en .env"
+            )
+
+# ---------------------------------------------------------------------------
+# Login al sitio de notas parciales
+# ------------------------------------------------------------------------
+    def login(self) -> None:
+        """
+        Autentica contra Notas Parciales usando NTLM y obtiene
+        automáticamente la sesión ASP.NET.
+
+        Flujo:
+            1. NTLM contra IIS
+            2. /notasparciales/?direccion2=<usuario>
+            3. CapturaNotas.aspx usando la misma sesión
+        """
+        try:
+            from requests_ntlm import HttpNtlmAuth
+        except ImportError as ex:
+            raise SystemExit(
+                "Falta requests-ntlm.\n"
+                "Instalar con:\n"
+                "    pip install requests-ntlm"
+            ) from ex
+
+        # =========================================================
+        # CONFIGURACIÓN
+        # =========================================================
+        usuario = self.auth.ntlm_user.strip()
+        password = self.auth.ntlm_password
+
+        if not usuario:
+            raise RuntimeError(
+                "No se encontró NP_NTLM_USER."
+            )
+
+        if not password:
+            raise RuntimeError(
+                "No se encontró NP_NTLM_PASSWORD."
+            )
+
+        # =========================================================
+        # CREAR SESIÓN
+        # =========================================================
+
+        self.session = requests.Session()
+
+        self.session.auth = HttpNtlmAuth(
+            usuario,
+            password,
+        )
+
+        self.session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 "
+                "(Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 "
+                "(KHTML, like Gecko) "
+                "Chrome/151.0.0.0 Safari/537.36"
+            ),
+            "Accept": (
+                "text/html,application/xhtml+xml,"
+                "application/xml;q=0.9,*/*;q=0.8"
+            ),
+            "Accept-Language": "es-CR,es;q=0.9,en;q=0.8",
+            "Connection": "keep-alive",
+        })
+
+        # =========================================================
+        # AUTENTICACIÓN NTLM en https://produccion.uned.ac.cr/notasparciales/?direccion2=usuario
+        # =========================================================
+
+        # construimos el url con todo y parametros que incluye el usuario direccion2 debe ser el usuario NTLM
+        entrada_url = f"{BASE}/?direccion2={usuario}"
+        #Llamamos el URL 
+        try:
+            respuesta = self.session.get(
+                entrada_url,
+                timeout=(10, 30),
+                allow_redirects=True,
+            )
+
+        except requests.exceptions.Timeout as ex:
+            raise RuntimeError(
+                "Timeout al autenticarse contra Notas Parciales."
+            ) from ex
+
+        except requests.exceptions.RequestException as ex:
+            raise RuntimeError(
+                f"Error HTTP durante autenticación NTLM: {ex}"
+            ) from ex
+
+
+        # ASP.NET necesita crear una sesión
+        aspnet_cookie = self.session.cookies.get(
+            "ASP.NET_SessionId"
+        )
+
+        if not aspnet_cookie:
+            raise RuntimeError(
+                "NTLM respondió correctamente, pero "
+                "no se obtuvo ASP.NET_SessionId."
+            )
+
+
+        # =========================================================
+        # PEDIR pagina https://produccion.uned.ac.cr/notasparciales/Formularios/CapturaNotas.aspx
+        # =========================================================
+        try:
+            self.session.get(
+            PAGE,
+            timeout=(10, 30),
+            allow_redirects=True,
+            )
+
+        except requests.exceptions.Timeout as ex:
+            logger.error("Timeout al abrir CapturaNotas.aspx")
+
+            raise RuntimeError(
+                "La petición a CapturaNotas.aspx "
+                "superó el timeout de 30 segundos."
+            ) from ex
+
+        except requests.exceptions.RequestException as ex:
+            raise RuntimeError(
+                f"Error al abrir CapturaNotas.aspx: {ex}"
+            ) from ex
+
+        # =========================================================
+        # 9. Proceso de autenticación completado. La sesión ASP.NET está lista para usar.
+        # =========================================================
+
+        print()
+        print("========================================")
+        print("AUTENTICACIÓN EXITOSA")
+        print("========================================")
 
     # -- Helpers ----------------------------------------------------------
-    def _post_json_string(self, method: str, raw_body: str) -> dict[str, Any]:
+    def _post_json_string(self,method: str,body: str,) -> dict[str, Any]:
         """
-        POST a `<PAGE>/<method>` con `raw_body` como literal de bytes.
+        Ejecuta un WebMethod ASP.NET que recibe JSON.
 
-        Importante: muchas llamadas usan literales de objeto JS (claves SIN
-        comillas, ej. `{_peAno: '2026'}`) que NO son JSON estándar. ASP.NET
-        las acepta porque internamente parsea con un deserializador permisivo.
-        Para reproducir EXACTAMENTE lo que hace el navegador, mandamos el
-        string crudo (en lugar de json.dumps) y dejamos que el server haga
-        su parseo.
+        Mantiene la misma sesión NTLM/ASP.NET creada durante login().
         """
+
         url = f"{PAGE}/{method}"
-        logger.debug("POST %s  body=%s", url, raw_body[:300])
-        resp = self.session.post(url, data=raw_body.encode("utf-8"), timeout=self.timeout)
-        self._check_response(method, resp)
-        return self._unwrap_d(resp.json())
 
-    def _post_json(self, method: str, payload: dict[str, Any]) -> dict[str, Any]:
-        """POST a `<PAGE>/<method>` con JSON estándar serializado por nosotros."""
+        headers = {
+            **COMMON_HEADERS,
+            "Referer": PAGE,
+        }
+
+        resp = self.session.post(
+            url,
+            data=body.encode("utf-8"),
+            headers=headers,
+            timeout=self.timeout,
+        )
+
+        self._check_response(method, resp)
+
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            raise RuntimeError(
+                f"{method}: el servidor respondió algo que no es JSON.\n"
+                f"URL: {resp.url}\n"
+                f"Content-Type: {resp.headers.get('Content-Type')}\n"
+                f"Respuesta: {resp.text[:1000]}"
+            ) from exc
+
+        return self._unwrap_d(data)
+
+    def _post_json(self,method: str,payload: dict[str, Any],) -> dict[str, Any]:
+
         url = f"{PAGE}/{method}"
         body = json.dumps(payload, ensure_ascii=False)
-        logger.debug("POST %s  body=%s", url, body[:300])
-        resp = self.session.post(url, data=body.encode("utf-8"), timeout=self.timeout)
+
+        resp = self.session.post(
+            url,
+            data=body.encode("utf-8"),
+            headers={
+                **COMMON_HEADERS,
+                "Referer": PAGE,
+            },
+            timeout=self.timeout,
+        )
+
         self._check_response(method, resp)
-        return self._unwrap_d(resp.json())
+
+        return self._unwrap_d(resp.json())    
 
     @staticmethod
-    def _check_response(method: str, resp: requests.Response) -> None:
+    def _check_response(method: str,resp: requests.Response,) -> None:
+        """Valida que la respuesta del servicio sea HTTP 200 y JSON."""
+
         if resp.status_code != 200:
             raise RuntimeError(
-                f"{method}: HTTP {resp.status_code}: {resp.text[:500]}"
+                f"{method}: HTTP {resp.status_code}: "
+                f"{resp.text[:500]}"
             )
+
         ctype = resp.headers.get("Content-Type", "")
+
         if "json" not in ctype.lower():
-            preview = resp.text[:300].replace("\n", " ")
+            preview = (
+                resp.text[:500]
+                .replace("\n", " ")
+                .replace("\r", " ")
+            )
+
             raise RuntimeError(
-                f"{method}: respuesta no-JSON (Content-Type={ctype!r}). "
-                "Probable expiración de cookies. Refrescá las 3 cookies en .env. "
+                f"{method}: respuesta no-JSON "
+                f"(Content-Type={ctype!r}). "
+                f"URL={resp.url}. "
                 f"Preview: {preview!r}"
             )
 
@@ -483,28 +726,36 @@ class NotasParcialesClient:
 def _load_auth_and_context_from_env(args: argparse.Namespace) -> tuple[Auth, Context]:
     load_dotenv()
     auth = Auth(
-        aspnet_sessionid=os.environ.get("NP_COOKIE_ASPNET_SESSIONID", "").strip(),
-        uzmx=os.environ.get("NP_COOKIE_UZMX", "").strip(),
-        uzmxj=os.environ.get("NP_COOKIE_UZMXJ", "").strip(),
         ntlm_user=os.environ.get("NP_NTLM_USER", "").strip(),
         ntlm_password=os.environ.get("NP_NTLM_PASSWORD", ""),
     )
-    missing_cookies = [
-        k for k in ("aspnet_sessionid", "uzmx", "uzmxj")
-        if not getattr(auth, k)
-    ]
-    if missing_cookies:
-        raise SystemExit(
-            "Faltan cookies en .env: "
-            + ", ".join(f"NP_COOKIE_{k.upper()}" for k in missing_cookies)
-            + "\nVer .env.example para instrucciones de cómo obtenerlas."
-        )
+
     if not auth.ntlm_user or not auth.ntlm_password:
         raise SystemExit(
             "Faltan credenciales NTLM en .env: NP_NTLM_USER y/o NP_NTLM_PASSWORD.\n"
             "El sitio /notasparciales/ exige autenticación NTLM ANTES de aceptar cookies.\n"
             "Usá tu username del SSO UNED (ej. `chernandeza`, NO la cédula) y tu password.\n"
             "Ver .env.example."
+        )
+
+    filled = _apply_context_cache(args)
+    if filled:
+        logger.info(
+            "Contexto completado desde cache (%s) para --asignatura %s: %s",
+            CONTEXT_CACHE_PATH, args.asignatura, ", ".join(filled),
+        )
+
+    missing = [f for f in _CACHED_FIELDS if getattr(args, f, None) is None]
+    if missing:
+        raise SystemExit(
+            "Faltan parámetros de contexto: "
+            + ", ".join(f"--{m}" for m in missing) + ".\n"
+            f"No hay cache guardado para --asignatura {args.asignatura!r} "
+            f"(ano={args.ano} pac={args.pac} tipo={args.tipo}).\n"
+            "Pasalos explícitamente esta vez (ver README), o corré 'probe' una "
+            "vez con todos los parámetros: si devuelve instrumentos y "
+            "estudiantes reales, quedan guardados en "
+            f"{CONTEXT_CACHE_PATH} para las próximas corridas."
         )
 
     usuario_cedula = args.usuario_cedula or os.environ.get("NP_USUARIO_CEDULA", "")
@@ -539,47 +790,176 @@ def _detect_session_dead(client: NotasParcialesClient) -> None:
         raise SystemExit(
             "No se pudo validar la sesión con notasparciales.\n"
             f"Detalle: {e}\n"
-            "Refrescá las 3 cookies (NP_COOKIE_*) en .env y volvé a intentar."
+            "Reautenticación NTLM requerida. La sesión ASP.NET podría haber expirado."
         ) from e
 
 
 def cmd_probe(args: argparse.Namespace) -> int:
     auth, ctx = _load_auth_and_context_from_env(args)
+
     client = NotasParcialesClient(auth)
+    client.login()
 
-    print("== Probando autenticación ==")
-    _detect_session_dead(client)
-    print("OK: cookies válidas, el sistema está abierto.")
+    print(
+        f"\n== Nota mínima para "
+        f"{ctx.asignatura} =="
+    )
 
-    print(f"\n== Nota mínima para {ctx.asignatura} ==")
-    nota_min = client.consultar_nota_minima(ctx.asignatura, ctx.tipo)
-    print(f"Nota mínima de aprobación: {nota_min}")
+    nota_min = client.consultar_nota_minima(
+        ctx.asignatura,
+        ctx.tipo
+    )
+
+    print(
+        f"Nota mínima de aprobación: "
+        f"{nota_min}"
+    )
 
     print("\n== Instrumentos del modelo ==")
+
     instr = client.obtener_instrumentos_modelo(ctx)
-    encabezados = [h.get("Dato", "") for h in instr.get("Tabla_Encabezados", [])]
-    columnas = instr.get("Tabla_Modelo", [])
-    print("Encabezados visibles en la tabla:")
+
+    encabezados = [
+        h.get("Dato", "")
+        for h in instr.get(
+            "Tabla_Encabezados",
+            []
+        )
+    ]
+
+    columnas = instr.get(
+        "Tabla_Modelo",
+        []
+    )
+
+    print(
+        "Encabezados visibles en la tabla:"
+    )
+
     for e in encabezados:
         print(f"  - {e}")
-    print("\nMapeo Codigo -> Nombre del instrumento (lo que necesitás para --instrumento):")
+
+    print(
+        "\nMapeo Codigo -> Nombre del "
+        "instrumento "
+        "(lo que necesitás para --instrumento):"
+    )
+
+    instrumentos_reales = []
     for col in columnas:
         name = col.get("name", "")
         index = col.get("index", "")
+
         if not name or name in METADATA_COLUMNS:
             continue
-        print(f"  {name:8s}  ->  {index}")
 
-    print("\n== Cargando tabla del grupo (resumen) ==")
+        instrumentos_reales.append(name)
+        print(
+            f"  {name:8s}  ->  {index}"
+        )
+
+    if not instrumentos_reales:
+        print(
+            "\n⚠ ADVERTENCIA: el modelo no devolvió ningún instrumento de "
+            "evaluación (Tar1, Proy1, etc.).\n"
+            "  La autenticación fue exitosa, así que esto casi siempre es un "
+            "parámetro incorrecto\n"
+            "  (--asignatura, --modelo, --cu o --grupo), NO un problema de "
+            "login/cookies."
+        )
+
+    print(
+        "\n== Cargando tabla del grupo "
+        "(resumen) =="
+    )
+
     rows = client.cargar_notas(ctx)
-    print(f"Estudiantes en el grupo: {len(rows)}")
+
+    print(
+        f"Estudiantes en el grupo: "
+        f"{len(rows)}"
+    )
+
+    if not rows:
+        print(
+            "⚠ ADVERTENCIA: 0 estudiantes para esta combinación de "
+            "--cu/--grupo/--asignatura/--pac. Revisá esos valores en el "
+            "dropdown de la página antes de asumir que el script está roto."
+        )
+
     for r in rows[:5]:
-        nombre = r.get("Nombre", "").strip()
-        cedula = r.get("Cedula", "")
-        promedio = r.get("Promedio", 0)
-        print(f"  {cedula}  {nombre[:40]:40s}  promedio={promedio}")
+        nombre = r.get(
+            "Nombre",
+            ""
+        ).strip()
+
+        cedula = r.get(
+            "Cedula",
+            ""
+        )
+
+        promedio = r.get(
+            "Promedio",
+            0
+        )
+
+        print(
+            f"  {cedula}  "
+            f"{nombre[:40]:40s}  "
+            f"promedio={promedio}"
+        )
+
     if len(rows) > 5:
-        print(f"  ... ({len(rows) - 5} más)")
+        print(
+            f"  ... "
+            f"({len(rows) - 5} más)"
+        )
+
+    if instrumentos_reales and rows:
+        _save_context_cache(ctx)
+        xlsx = _guess_xlsx()
+        cmd = (
+            f"{_invocation()} plan {_ctx_flags(ctx)} "
+            f"--xlsx {xlsx or 'calificaciones.xlsx'}"
+        )
+        body = [
+            f" Curso:        {ctx.asignatura}  (año {ctx.ano}, PAC {ctx.pac})",
+            f" Instrumentos: {', '.join(instrumentos_reales)}",
+            f" Estudiantes:  {len(rows)} en CU {ctx.cu} / Grupo {ctx.grupo}",
+            "",
+            f" Los códigos del curso quedaron guardados en {CONTEXT_CACHE_PATH},",
+            " así que de ahora en adelante no hace falta volver a escribirlos.",
+            "",
+            " ▶ SIGUIENTE PASO — copiá y pegá esta línea:",
+            "",
+            f"   {cmd}",
+        ]
+        if not xlsx:
+            body += [
+                "",
+                " (Cambiá 'calificaciones.xlsx' por el nombre real de tu",
+                "  archivo exportado de Moodle)",
+            ]
+        _guide("✓ PASO 1 DE 3 COMPLETADO — Conexión verificada", body)
+    else:
+        _guide(
+            "✗ PASO 1 DE 3 — No se pudo verificar el curso",
+            [
+                " La conexión y la contraseña funcionan, pero el sistema no",
+                " devolvió datos para esta combinación de parámetros.",
+                "",
+                " Revisá en la página de Captura de Notas que estos valores",
+                " coincidan con los del curso que querés cargar:",
+                "",
+                f"   --asignatura  {ctx.asignatura}",
+                f"   --modelo      {ctx.modelo}",
+                f"   --pac         {ctx.pac}",
+                f"   --cu          {ctx.cu}",
+                f"   --grupo       {ctx.grupo}",
+                "",
+                " NO es un problema de usuario/contraseña ni del archivo .env.",
+            ],
+        )
 
     return 0
 
@@ -686,6 +1066,7 @@ def _upload_one(
 def cmd_single(args: argparse.Namespace) -> int:
     auth, ctx = _load_auth_and_context_from_env(args)
     client = NotasParcialesClient(auth)
+    client.login()
     _detect_session_dead(client)
 
     logger.info("Subiendo: cedula=%s instrumento=%s nota=%s dry_run=%s",
@@ -711,6 +1092,7 @@ def cmd_single(args: argparse.Namespace) -> int:
 def cmd_upload_csv(args: argparse.Namespace) -> int:
     auth, ctx = _load_auth_and_context_from_env(args)
     client = NotasParcialesClient(auth)
+    client.login()
     _detect_session_dead(client)
 
     csv_path = Path(args.upload_csv)
@@ -803,17 +1185,18 @@ def _parse_xlsx(path: Path) -> tuple[list[str], list[list[Any]]]:
         raise SystemExit(
             "openpyxl no está instalado. Corré:  pip install openpyxl"
         )
-    wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
-    ws = wb[wb.sheetnames[0]]
-    rows = list(ws.iter_rows(values_only=True))
-    if not rows:
-        raise SystemExit(f"{path.name}: archivo vacío")
-    headers = [str(h) if h is not None else "" for h in rows[0]]
-    return headers, [list(r) for r in rows[1:]]
-
+    try:
+        wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+        ws = wb[wb.sheetnames[0]]
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            raise SystemExit(f"{path.name}: archivo vacío")
+        headers = [str(h) if h is not None else "" for h in rows[0]]
+        return headers, [list(r) for r in rows[1:]]
+    finally:
+        wb.close()
 
 _INSTITUCION_RE = re.compile(r"\((\d{2,3})\)\s*$")
-
 
 def _extract_cu_from_institucion(value: str) -> str | None:
     """De 'SAN JOSE (01)' devuelve '01'."""
@@ -839,16 +1222,24 @@ def _normalize_for_match(s: str) -> str:
     return s
 
 
+_ID_COLUMN_HEADERS = frozenset({"Nombre", "Apellido(s)", "Número de ID", "Institución"})
+_NON_GRADE_HEADERS = frozenset({
+    "Dirección de correo", "Correo electrónico", "Grupos",
+    "Departamento", "Curso", "Empresa",
+})
+
+
 def _is_grade_column(header: str) -> bool:
-    """Identifica columnas de Moodle que contienen una nota (heurística simple)."""
-    if not header:
+    """Identifica columnas de Moodle que contienen una nota."""
+    if not header or header in _ID_COLUMN_HEADERS or header in _NON_GRADE_HEADERS:
         return False
     h = header.lower()
-    if "(real)" in h or "(porcentaje)" in h:
-        return True
     if "última descarga" in h or "ultima descarga" in h:
         return False
-    return False
+    if "(real)" in h or "(porcentaje)" in h:
+        return True
+    # Export "simple" de Moodle: columnas de nota sin sufijo (ej. "Tarea 1").
+    return True
 
 
 def _ingest_xlsx_files(paths: list[Path]) -> tuple[list[XlsxEntry], list[str]]:
@@ -1108,6 +1499,40 @@ def _parse_cu_grupo_args(values: list[str]) -> dict[str, int]:
     return out
 
 
+def _discover_grupo_for_cu(
+    client: NotasParcialesClient,
+    base_ctx: Context,
+    cu: str,
+    xlsx_cedulas: set[str],
+    *,
+    max_grupo: int = 15,
+) -> int | None:
+    """
+    Descubre el número de grupo de un CU probando grupo=1..max_grupo contra
+    funCargarNotas (solo lectura) y quedándose con el que tenga más cédulas
+    en común con `xlsx_cedulas` (los estudiantes de ese CU en el xlsx).
+
+    No sirve para adivinar el modelo/asignatura: si esos están mal, todos los
+    grupos devuelven 0 estudiantes y esto devuelve None igual que hoy.
+    """
+    best_grupo: int | None = None
+    best_overlap = 0
+    for g in range(1, max_grupo + 1):
+        ctx = dataclasses.replace(base_ctx, cu=cu, grupo=g)
+        try:
+            rows = client.cargar_notas(ctx)
+        except RuntimeError:
+            continue
+        if not rows:
+            continue
+        server_cedulas = {str(r.get("Cedula", "")) for r in rows}
+        overlap = len(server_cedulas & xlsx_cedulas)
+        if overlap > best_overlap:
+            best_overlap = overlap
+            best_grupo = g
+    return best_grupo if best_overlap > 0 else None
+
+
 def _parse_explicit_map(values: list[str]) -> dict[str, str]:
     """Parsea ['Tarea 1=Tar1', ...] a {'<header>': '<codigo>'} (no acepta wildcards)."""
     out: dict[str, str] = {}
@@ -1324,6 +1749,7 @@ def _write_plan_csv(plan: list[PlanRow], path: Path) -> None:
 def cmd_plan(args: argparse.Namespace) -> int:
     auth, base_ctx = _load_auth_and_context_from_env(args)
     client = NotasParcialesClient(auth)
+    client.login()
     _detect_session_dead(client)
 
     xlsx_paths = [Path(p) for p in args.xlsx]
@@ -1335,32 +1761,76 @@ def cmd_plan(args: argparse.Namespace) -> int:
     print(f"Leídos {len(entries)} registros desde {len(xlsx_paths)} archivo(s).")
     print(f"Columnas de nota detectadas: {grade_headers}")
 
-    cu_grupo_map = _parse_cu_grupo_args(args.cu_grupo)
-    if not cu_grupo_map:
-        raise SystemExit("Se requiere al menos un --cu-grupo (ej. --cu-grupo 42=1 01=2)")
-    print(f"CU → grupo: {cu_grupo_map}")
+    # CUs ya vienen del xlsx (columna Institución); lo único que falta es el
+    # número de grupo por CU. --cu-grupo sigue disponible como override manual,
+    # pero para cualquier CU que no venga ahí, lo autodetectamos probando
+    # grupo=1..15 y comparando cédulas contra las de ese CU en el xlsx.
+    xlsx_cedulas_by_cu: dict[str, set[str]] = {}
+    for e in entries:
+        if e.cu_xlsx:
+            xlsx_cedulas_by_cu.setdefault(e.cu_xlsx, set()).add(e.cedula)
+    cus_in_xlsx = sorted(xlsx_cedulas_by_cu)
 
-    cu_grupo_pairs = list({(e.cu_xlsx, cu_grupo_map[e.cu_xlsx])
-                           for e in entries if e.cu_xlsx in cu_grupo_map})
+    cu_grupo_map = _parse_cu_grupo_args(args.cu_grupo)
+    if cu_grupo_map:
+        print(f"CU → grupo (explícito vía --cu-grupo): {cu_grupo_map}")
+
+    missing_cus = [cu for cu in cus_in_xlsx if cu not in cu_grupo_map]
+    if missing_cus:
+        print(
+            f"\nAuto-detectando grupo para {len(missing_cus)} CU(s) no "
+            "especificados en --cu-grupo (probando grupo=1..15, solo lectura)..."
+        )
+        for cu in missing_cus:
+            grupo = _discover_grupo_for_cu(client, base_ctx, cu, xlsx_cedulas_by_cu.get(cu, set()))
+            if grupo is not None:
+                cu_grupo_map[cu] = grupo
+                print(f"  CU={cu}: detectado grupo={grupo}")
+            else:
+                print(
+                    f"  CU={cu}: no se pudo detectar el grupo automáticamente "
+                    "(sin coincidencias de cédula en grupo=1..15). Especificalo "
+                    f"manualmente con --cu-grupo {cu}=N, o revisá si "
+                    "--asignatura/--modelo/--pac son correctos."
+                )
+
+    if not cu_grupo_map:
+        raise SystemExit(
+            "No se pudo resolver ningún CU→grupo (ni por --cu-grupo ni "
+            "automáticamente). Revisá el xlsx y --asignatura/--modelo."
+        )
+    print(f"\nCU → grupo final: {cu_grupo_map}")
+
+    cu_grupo_pairs = sorted(
+        {(e.cu_xlsx, cu_grupo_map[e.cu_xlsx]) for e in entries if e.cu_xlsx in cu_grupo_map}
+    )
     print(f"Pares (CU, grupo) a consultar: {cu_grupo_pairs}")
+
+    if not cu_grupo_pairs:
+        raise SystemExit("Sin pares (CU, grupo) válidos: revisá los xlsx y --cu-grupo.")
 
     print("\nConsultando servidor (roster + instrumentos)...")
     roster, instruments_per_grupo = _fetch_server_state(client, base_ctx, cu_grupo_pairs)
     for k, students in roster.items():
-        print(f"  CU={k[0]} grupo={k[1]}: {len(students)} estudiantes en notasparciales")
+        marker = "" if students else "  ⚠ 0 estudiantes"
+        print(f"  CU={k[0]} grupo={k[1]}: {len(students)} estudiantes en notasparciales{marker}")
 
-    # Inferir mapeo de instrumentos. Asumimos que TODOS los grupos del mismo modelo
-    # comparten los mismos instrumentos; usamos el del primer grupo como referencia.
-    if not cu_grupo_pairs:
-        raise SystemExit("Sin pares (CU, grupo) válidos: revisá los xlsx y --cu-grupo.")
-    ref_key = cu_grupo_pairs[0]
-    server_columns = []
-    server_encabezados = []
-    instr_resp = client.obtener_instrumentos_modelo(
-        dataclasses.replace(base_ctx, cu=ref_key[0], grupo=ref_key[1])
-    )
-    server_columns = instr_resp.get("Tabla_Modelo", []) or []
-    server_encabezados = instr_resp.get("Tabla_Encabezados", []) or []
+    # Mapeo de instrumentos: usamos el primer (CU, grupo) que haya devuelto un
+    # modelo no vacío como referencia (reusa lo que _fetch_server_state ya
+    # trajo; no hace falta pedirlo de nuevo al servidor).
+    ref_key = next((k for k in cu_grupo_pairs if instruments_per_grupo.get(k)), None)
+    if ref_key is None:
+        print(
+            "\n⚠ ADVERTENCIA: ningún (CU, grupo) del plan devolvió instrumentos "
+            "de evaluación. La sesión está autenticada, así que esto es casi "
+            "seguro un --asignatura/--modelo incorrecto, no un problema de login."
+        )
+        server_columns: list[dict[str, Any]] = []
+        server_encabezados: list[dict[str, Any]] = []
+    else:
+        instr_map = instruments_per_grupo[ref_key]
+        server_columns = [{"name": codigo} for codigo in instr_map]
+        server_encabezados = [{"Dato": nombre} for _, nombre in instr_map.values()]
     explicit_map = _parse_explicit_map(args.map or [])
     instrument_mapping = _build_instrument_mapping(
         grade_headers, server_columns, server_encabezados, explicit_map,
@@ -1402,13 +1872,69 @@ def cmd_plan(args: argparse.Namespace) -> int:
     out = Path(args.output)
     _write_plan_csv(plan, out)
     print(f"\nPlan escrito en: {out}")
-    print(f"Inspeccionalo en Excel/VS Code antes de correr 'apply'.")
+
+    n_upload = counts.get(ACCION_UPLOAD, 0)
+    n_np = counts.get(ACCION_MARK_NOT_PRESENTED, 0)
+    n_over = counts.get(ACCION_WOULD_OVERWRITE, 0)
+    n_review = counts.get(ACCION_REVIEW, 0)
+    n_roster = counts.get(ACCION_SKIP_NOT_IN_ROSTER, 0)
+
+    if n_upload + n_np + n_over == 0:
+        _guide(
+            "⚠ PASO 2 DE 3 — El plan no tiene nada para subir",
+            [
+                f" Se generó {out}, pero ninguna fila requiere acción.",
+                "",
+                " Puede ser que las notas ya estén cargadas (eso está bien),",
+                " o que algo no haya cruzado con el sistema. Abrí el archivo",
+                " en Excel y mirá la columna 'motivo' para saber cuál es.",
+                "",
+                " 🔒 NO se escribió nada en el sistema de la UNED.",
+            ],
+        )
+        return 0
+
+    body = [
+        f" 📄 Archivo generado: {out}",
+        "",
+        " Esto es lo que pasaría al ejecutar el paso 3:",
+    ]
+    if n_upload:
+        body.append(f"   • {n_upload:>4d} notas nuevas se subirían")
+    if n_np:
+        body.append(f"   • {n_np:>4d} estudiantes se marcarían como 'no presentó'")
+    if n_over:
+        body.append(
+            f"   • {n_over:>4d} notas YA EXISTENTES cambiarían "
+            "(requiere --allow-update)"
+        )
+    if n_review or n_roster:
+        body.append("")
+        if n_review:
+            body.append(f"   ⚠ {n_review} fila(s) marcadas 'review': revisalas a mano")
+        if n_roster:
+            body.append(
+                f"   ⚠ {n_roster} estudiante(s) del xlsx no están en el grupo oficial"
+            )
+    body += [
+        "",
+        " 🔒 TODAVÍA NO SE ESCRIBIÓ NADA en el sistema de la UNED.",
+        "",
+        " ▶ SIGUIENTE PASO:",
+        "",
+        f"   1. Abrí {out} en Excel y revisá las columnas 'accion' y 'motivo'.",
+        "   2. Cuando estés conforme, hacé la PRUEBA (tampoco escribe nada):",
+        "",
+        f"   {_invocation()} apply {_ctx_flags(base_ctx)} --plan {out}",
+    ]
+    _guide("✓ PASO 2 DE 3 COMPLETADO — Plan generado", body)
     return 0
 
 
 def cmd_apply(args: argparse.Namespace) -> int:
     auth, base_ctx = _load_auth_and_context_from_env(args)
     client = NotasParcialesClient(auth)
+    client.login()
     _detect_session_dead(client)
 
     plan_path = Path(args.plan)
@@ -1436,6 +1962,34 @@ def cmd_apply(args: argparse.Namespace) -> int:
     print(f"Filas en el plan: {len(rows)}")
     print(f"Filas a ejecutar (acciones {sorted(target_actions)}): {len(work)}")
     print(f"dry_run={args.dry_run}")
+
+    if not work:
+        n_over = sum(1 for r in rows if r["accion"] == ACCION_WOULD_OVERWRITE)
+        body = [
+            f" El plan {plan_path} tiene {len(rows)} fila(s), pero ninguna",
+            " requiere acción en este momento.",
+        ]
+        if n_over and not args.allow_update:
+            body += [
+                "",
+                f" Ojo: {n_over} fila(s) cambiarían una nota YA EXISTENTE.",
+                " Por seguridad no se ejecutan salvo que lo pidas explícitamente:",
+                "",
+                f"   {_invocation()} apply {_ctx_flags(base_ctx)} "
+                f"--plan {plan_path} --allow-update --justificacion-codigo 2005",
+                "",
+                " (2005 = 'Error de digitación'. Revisá primero en Excel que",
+                "  esos cambios sean los que querés.)",
+            ]
+        else:
+            body += [
+                "",
+                " Si esperabas que subiera notas, abrí el archivo en Excel y",
+                " mirá la columna 'motivo' de cada fila.",
+            ]
+        body += ["", " 🔒 NO se escribió nada en el sistema de la UNED."]
+        _guide("⚠ No hay nada que ejecutar", body)
+        return 0
 
     # Agrupar por (cu, grupo) para mantener el contexto consistente
     work.sort(key=lambda r: (r["cu"], int(r["grupo"]), r["cedula"], r["instrumento"]))
@@ -1489,7 +2043,227 @@ def cmd_apply(args: argparse.Namespace) -> int:
         print(f"\nResultados escritos en: {out}")
 
     print(f"\n== Resumen ==\nOK:    {ok}\nFAIL:  {len(failed)}")
-    return 0 if not failed else 1
+
+    if args.dry_run:
+        if failed:
+            _guide(
+                "✗ PRUEBA TERMINADA CON ERRORES — no se subió nada",
+                [
+                    f" La prueba falló en {len(failed)} de {len(work)} fila(s).",
+                    "",
+                    f" Mirá la columna 'resultado' en {out} para ver el detalle",
+                    " de cada error antes de volver a intentar.",
+                    "",
+                    " 🔒 NO se escribió nada en el sistema de la UNED.",
+                ],
+            )
+            return 1
+        _guide(
+            "✓ PRUEBA EXITOSA — todavía no se subió nada",
+            [
+                f" Las {ok} filas se procesaron sin errores en modo de prueba.",
+                "",
+                " 🔒 TODAVÍA NO SE ESCRIBIÓ NADA en el sistema de la UNED.",
+                "",
+                " ▶ ÚLTIMO PASO — esto SÍ escribe las notas de verdad:",
+                "",
+                f"   {_invocation()} apply {_ctx_flags(base_ctx)} "
+                f"--plan {plan_path} --commit",
+                "",
+                " (La diferencia es el --commit del final)",
+            ],
+        )
+        return 0
+
+    if failed:
+        _guide(
+            "⚠ PASO 3 DE 3 — Terminado con errores",
+            [
+                f" Se subieron {ok} nota(s) correctamente.",
+                f" Fallaron {len(failed)} fila(s).",
+                "",
+                f" Abrí {out} y filtrá la columna 'resultado' por 'FAIL'",
+                " para ver qué pasó con cada una.",
+                "",
+                " Las filas que fallaron NO se cargaron: podés corregir el",
+                " problema y volver a ejecutar; las que ya están bien se",
+                " detectan como 'skip_already_set' y no se duplican.",
+            ],
+        )
+        return 1
+
+    _guide(
+        "🎉 PASO 3 DE 3 COMPLETADO — Notas cargadas",
+        [
+            f" Se subieron {ok} nota(s) al sistema de Notas Parciales.",
+            "",
+            f" Comprobante: {out}",
+            "",
+            " Podés verificarlo entrando a la página de Captura de Notas,",
+            " o volviendo a generar el plan: las notas ya cargadas van a",
+            " aparecer como 'skip_already_set'.",
+        ],
+    )
+    return 0
+
+
+def cmd_estado(args: argparse.Namespace) -> int:
+    """
+    Dice en qué punto del proceso está el usuario y cuál es el próximo
+    comando. Solo mira archivos locales: no se conecta al servidor, no
+    necesita parámetros y nunca escribe nada.
+    """
+    inv = _invocation()
+    print()
+    print(GUIDE_RULE)
+    print(" ESTADO DEL PROCESO DE CARGA DE NOTAS")
+    print(GUIDE_RULE)
+
+    # --- Paso 0: credenciales -------------------------------------------
+    load_dotenv()
+    tiene_credenciales = bool(
+        os.environ.get("NP_NTLM_USER", "").strip()
+        and os.environ.get("NP_NTLM_PASSWORD", "")
+    )
+    if tiene_credenciales:
+        usuario = os.environ.get("NP_NTLM_USER", "").strip()
+        print(f" ✓ Credenciales configuradas (.env, usuario: {usuario})")
+    else:
+        print(" ✗ Faltan credenciales en el archivo .env")
+
+    # --- Paso 1: cursos verificados -------------------------------------
+    cache = _load_context_cache()
+    cursos = sorted(
+        cache.items(),
+        key=lambda kv: kv[1].get("_guardado", ""),
+        reverse=True,
+    )
+    if cursos:
+        print(f" ✓ Cursos verificados: {len(cursos)}")
+        for key, entry in cursos:
+            asignatura, ano, pac, tipo = key.split("|")
+            cuando = entry.get("_guardado", "fecha desconocida")
+            print(
+                f"     · {asignatura}  (año {ano}, PAC {pac})"
+                f"   verificado el {cuando}"
+            )
+    else:
+        print(" ✗ Ningún curso verificado todavía (falta correr 'probe')")
+
+    # --- Paso 2: plan generado ------------------------------------------
+    plan_path = Path(args.plan)
+    plan_counts: dict[str, int] = {}
+    if plan_path.exists():
+        try:
+            with plan_path.open("r", encoding="utf-8-sig", newline="") as f:
+                for r in csv.DictReader(f):
+                    accion = (r.get("accion") or "").strip()
+                    plan_counts[accion] = plan_counts.get(accion, 0) + 1
+        except OSError:
+            pass
+        total = sum(plan_counts.values())
+        cuando = time.strftime("%Y-%m-%d %H:%M", time.localtime(plan_path.stat().st_mtime))
+        print(f" ✓ Plan generado: {plan_path} ({total} filas, {cuando})")
+        pendientes = (
+            plan_counts.get(ACCION_UPLOAD, 0)
+            + plan_counts.get(ACCION_MARK_NOT_PRESENTED, 0)
+        )
+        print(f"     · {pendientes} fila(s) pendientes de subir")
+    else:
+        print(f" ✗ No hay plan generado ({plan_path} no existe)")
+
+    # --- Paso 3: resultados ---------------------------------------------
+    res_path = plan_path.with_name(plan_path.stem + "_resultados.csv")
+    subidas = 0
+    fallidas = 0
+    pruebas = 0
+    if res_path.exists():
+        try:
+            with res_path.open("r", encoding="utf-8-sig", newline="") as f:
+                for r in csv.DictReader(f):
+                    resultado = (r.get("resultado") or "").strip()
+                    if resultado == "ok":
+                        subidas += 1
+                    elif resultado.startswith("FAIL"):
+                        fallidas += 1
+                    elif resultado == "dry_run":
+                        pruebas += 1
+        except OSError:
+            pass
+        if subidas or fallidas:
+            print(f" ✓ Última carga real: {subidas} subida(s), {fallidas} fallida(s)")
+            print(f"     · Comprobante: {res_path}")
+        elif pruebas:
+            print(f" ✓ Prueba realizada sin errores ({pruebas} fila(s))")
+            print(" ✗ Todavía no se subió ninguna nota al sistema")
+        else:
+            print(f" · Hay un archivo de resultados previo: {res_path}")
+    else:
+        print(" ✗ Todavía no se subió ninguna nota al sistema")
+
+    print(GUIDE_RULE)
+
+    # --- Qué sigue -------------------------------------------------------
+    print(" ▶ SIGUIENTE PASO:")
+    print()
+    if not tiene_credenciales:
+        print("   Abrí el archivo .env y completá NP_NTLM_USER y")
+        print("   NP_NTLM_PASSWORD con tu usuario y contraseña de la UNED.")
+        print("   (Si no existe, copiá .env.example como .env)")
+    elif not cursos:
+        print("   Verificá tu curso con 'probe'. La primera vez hay que pasar")
+        print("   todos los códigos; después quedan guardados. Ejemplo:")
+        print()
+        print(f"   {inv} probe --ano 2026 --pac 4 --escuela 03 --catedra 253 "
+              "--encargado ARODRIGUEZP --tutor 0401780367 --asignatura 03622 "
+              "--cu 81 --grupo 1 --modelo 1")
+    else:
+        key, _ = cursos[0]
+        asignatura, ano, pac, tipo = key.split("|")
+        flags = f"--ano {ano} --pac {pac} --asignatura {asignatura}"
+        if tipo != "O":
+            flags += f" --tipo {tipo}"
+        pendientes = (
+            plan_counts.get(ACCION_UPLOAD, 0)
+            + plan_counts.get(ACCION_MARK_NOT_PRESENTED, 0)
+        )
+        if not plan_path.exists():
+            xlsx = _guess_xlsx()
+            print("   Generá el plan a partir del archivo de Moodle:")
+            print()
+            print(f"   {inv} plan {flags} --xlsx {xlsx or 'calificaciones.xlsx'}")
+        elif pendientes and subidas == 0 and pruebas:
+            print("   Ya hiciste la prueba y salió bien. Este comando SÍ escribe")
+            print("   las notas de verdad en el sistema de la UNED:")
+            print()
+            print(f"   {inv} apply {flags} --plan {plan_path} --commit")
+        elif pendientes and subidas == 0:
+            print(f"   Revisá {plan_path} en Excel y luego hacé la prueba")
+            print("   (la prueba no escribe nada):")
+            print()
+            print(f"   {inv} apply {flags} --plan {plan_path}")
+        elif pendientes:
+            print(f"   Quedan {pendientes} fila(s) sin subir. Volvé a correr:")
+            print()
+            print(f"   {inv} apply {flags} --plan {plan_path}")
+        elif subidas:
+            print("   Todo el plan actual ya fue procesado. Si cargaste notas")
+            print("   nuevas en Moodle, exportá el xlsx otra vez y regenerá el plan:")
+            print()
+            xlsx = _guess_xlsx()
+            print(f"   {inv} plan {flags} --xlsx {xlsx or 'calificaciones.xlsx'}")
+        else:
+            print(f"   El plan {plan_path} no tiene ninguna fila para subir, y")
+            print("   todavía no se cargó nada. Abrí el archivo en Excel y mirá")
+            print("   la columna 'motivo' para entender por qué.")
+            print()
+            print("   Si el plan corresponde a otro curso o período, regeneralo:")
+            print()
+            xlsx = _guess_xlsx()
+            print(f"   {inv} plan {flags} --xlsx {xlsx or 'calificaciones.xlsx'}")
+    print(GUIDE_RULE)
+    print()
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -1500,18 +2274,33 @@ def _add_context_args(p: argparse.ArgumentParser, *, cu_grupo_required: bool = T
     g.add_argument("--ano", required=True, help="Año académico (ej. 2026)")
     g.add_argument("--pac", required=True, help="PAC / cuatrimestre (ej. 3)")
     g.add_argument("--tipo", default="O", help="Tipo de matrícula (default O)")
-    g.add_argument("--escuela", required=True, help="Código de escuela (ej. 03)")
-    g.add_argument("--catedra", type=int, required=True, help="ID numérico de cátedra (ej. 253)")
-    g.add_argument("--encargado", required=True, help="Username del encargado de cátedra")
-    g.add_argument("--tutor", required=True, help="Cédula del tutor")
     g.add_argument("--asignatura", required=True, help="Sigla del curso (ej. 00883)")
+    g.add_argument(
+        "--escuela", default=None,
+        help="Código de escuela (ej. 03). Si se omite, se busca en el cache de --asignatura (ver 'probe').",
+    )
+    g.add_argument(
+        "--catedra", type=int, default=None,
+        help="ID numérico de cátedra (ej. 253). Si se omite, se busca en el cache.",
+    )
+    g.add_argument(
+        "--encargado", default=None,
+        help="Username del encargado de cátedra. Si se omite, se busca en el cache.",
+    )
+    g.add_argument(
+        "--tutor", default=None,
+        help="Cédula del tutor. Si se omite, se busca en el cache.",
+    )
     if cu_grupo_required:
         g.add_argument("--cu", required=True, help="Código del centro universitario (ej. 42)")
         g.add_argument("--grupo", type=int, required=True, help="Número de grupo (ej. 1)")
     else:
         g.add_argument("--cu", default="", help="(no requerido en este modo: se infiere por fila)")
         g.add_argument("--grupo", type=int, default=0, help="(no requerido en este modo: se infiere por fila)")
-    g.add_argument("--modelo", type=int, required=True, help="Número de modelo de evaluación (ej. 4)")
+    g.add_argument(
+        "--modelo", type=int, default=None,
+        help="Número de modelo de evaluación (ej. 4). Si se omite, se busca en el cache.",
+    )
     g.add_argument("--usuario-cedula", default=None, help="Cédula del usuario funcionario (opc, default desde .env)")
     g.add_argument("--usuario-role", type=int, default=None, help="Rol del usuario (default 14 = Tutor)")
 
@@ -1519,7 +2308,7 @@ def _add_context_args(p: argparse.ArgumentParser, *, cu_grupo_required: bool = T
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="notasparciales_upload",
-        description="Sube notas a UNED Notas Parciales (sistema oficial). Auth por cookies (.env).",
+        description="Sube notas a UNED Notas Parciales. Auth NTLM mediante .env.",
     )
     p.add_argument("-v", "--verbose", action="count", default=0, help="-v info, -vv debug")
     p.add_argument("--dry-run", action="store_true", default=None,
@@ -1536,6 +2325,15 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Segundos entre requests en modo CSV (default 0.5)")
 
     sub = p.add_subparsers(dest="mode", required=True)
+
+    p_estado = sub.add_parser(
+        "estado",
+        help="¿En qué paso voy? Muestra el avance y el próximo comando (no se conecta al servidor)",
+    )
+    p_estado.add_argument(
+        "--plan", default=PLAN_DEFAULT,
+        help=f"Ruta al plan a inspeccionar (default {PLAN_DEFAULT})",
+    )
 
     p_probe = sub.add_parser("probe", help="Verifica auth y descubre instrumentos del modelo")
     _add_context_args(p_probe)
@@ -1560,8 +2358,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Ruta a un xlsx (formato exportación Moodle Calificaciones). Repetible.",
     )
     p_plan.add_argument(
-        "--cu-grupo", action="append", required=True,
-        help="Mapeo CU=GRUPO. Ej: --cu-grupo 42=1 --cu-grupo 01=2",
+        "--cu-grupo", action="append", default=[],
+        help="Mapeo CU=GRUPO opcional (override manual). Ej: --cu-grupo 42=1. "
+             "Si se omite para un CU presente en el xlsx, el grupo se "
+             "autodetecta contra el servidor.",
     )
     p_plan.add_argument(
         "--map", action="append", default=[],
@@ -1585,6 +2385,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # La consola de Windows suele usar cp1252, que no puede codificar tildes,
+    # ñ, ni "→"; forzamos UTF-8 para que print() no reviente con UnicodeEncodeError.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
     args = build_parser().parse_args(argv)
 
     level = logging.WARNING
@@ -1597,6 +2405,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run is None:
         args.dry_run = True  # default: no escribe
 
+    if args.mode == "estado":
+        return cmd_estado(args)
     if args.mode == "probe":
         return cmd_probe(args)
     if args.mode == "single":
