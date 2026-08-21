@@ -215,10 +215,21 @@ PLAN_DEFAULT = "notas_plan.csv"
 
 
 def _invocation() -> str:
-    """Cómo se está ejecutando el script, para sugerir comandos copiables."""
+    """Cómo se está ejecutando el script, para sugerir comandos copiables.
+
+    Usamos sys.executable (el intérprete que de verdad está corriendo)
+    en vez de la palabra "python" a secas: si el usuario invocó con
+    .venv\\Scripts\\python.exe, sugerir "python" puede resolver a otro
+    intérprete sin las dependencias instaladas (ModuleNotFoundError).
+    """
     if getattr(sys, "frozen", False):  # ejecutable armado con PyInstaller
         return Path(sys.executable).name
-    return f"python {Path(sys.argv[0]).name}"
+    exe = Path(sys.executable)
+    try:
+        exe_str = str(exe.relative_to(Path.cwd()))
+    except ValueError:
+        exe_str = str(exe)
+    return f"{exe_str} {Path(sys.argv[0]).name}"
 
 
 def _ctx_flags(ctx: "Context") -> str:
