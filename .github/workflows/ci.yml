@@ -14,8 +14,8 @@ permissions:
 jobs:
   # ── Que el guion sea Python válido y que sus dependencias existan ───────
   # Todavía no hay pruebas. Esto es el mínimo honesto, y no es poco: hoy nadie
-  # sabría que requirements.txt quedó incompleto hasta que un colega intentara
-  # instalarlo en su máquina.
+  # sabría que alguno de los tres requirements quedó incompleto hasta que un
+  # colega intentara instalarlo en su máquina.
   revision:
     runs-on: ubuntu-latest
     strategy:
@@ -40,11 +40,14 @@ jobs:
           cache: pip
 
       - name: Instalar lo que declaran los requirements
-        # Vale como prueba por sí solo: si el archivo quedó incompleto, o con
-        # una restricción imposible de resolver, acá se cae.
+        # Vale como prueba por sí solo: si algún archivo quedó incompleto, o
+        # con una restricción imposible de resolver, acá se cae. Los tres
+        # requirements del repositorio, no sólo el del programa: PyInstaller
+        # no necesita Windows para instalarse, sólo para construir el .exe, así
+        # que no hay motivo para dejarlo fuera de esta prueba.
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt
+          pip install -r requirements.txt -r requirements-dev.txt -r requirements-exe.txt
 
       - name: Estilo
         run: ruff check notasparciales_upload.py
