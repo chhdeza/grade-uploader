@@ -247,7 +247,7 @@ El archivo exportado debe tener estas columnas (Moodle las genera automáticamen
 |---------|---------|-------------|
 | `Nombre` | María | Nombre del estudiante |
 | `Apellido(s)` | Pérez Solano | Apellidos |
-| `Número de ID` | 0401230456 | **Cédula del estudiante** (debe coincidir con Notas Parciales) |
+| `Número de ID` | 0109876543 | **Cédula del estudiante** (debe coincidir con Notas Parciales) |
 | `Institución` | SAN JOSE (01) | Centro universitario. El número entre paréntesis es el código CU |
 
 **📊 Columnas de notas:**
@@ -258,7 +258,7 @@ El script detecta automáticamente las columnas que terminan en `(Real)` o `(Por
 
 | Nombre | Apellido(s) | Número de ID | Institución | Tarea 1 (Real) | Proyecto Final (Real) |
 |--------|-------------|-------------|-------------|-----------------|----------------------|
-| María | Pérez Solano | 0401230456 | SAN JOSE (01) | 89 | 95 |
+| María | Pérez Solano | 0109876543 | SAN JOSE (01) | 89 | 95 |
 | Juan | Rodríguez Li | 0304560789 | DESAMPARADOS (42) | 75 | - |
 | Ana | Mora Castro | 0501230456 | SAN JOSE (01) | - | 80 |
 
@@ -294,7 +294,7 @@ El modo `csv` usa un archivo CSV simple con las notas **ya en escala 0–10**.
 
 ```csv
 cedula,instrumento,nota
-0401230456,Tar1,8.9
+0109876543,Tar1,8.9
 0304560789,Tar1,7.5
 0501230456,Proy1,8.0
 ```
@@ -445,7 +445,7 @@ Ideal para **probar** que todo funciona antes de hacer una carga masiva.
 
 ```bash
 # Primero con --dry-run (NO escribe nada):
-python notasparciales_upload.py single --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 0401230456 --asignatura 00883 --cu 42 --grupo 1 --modelo 4 --cedula 0401230456 --instrumento Tar1 --nota 8.9 --dry-run
+python notasparciales_upload.py single --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 0401230456 --asignatura 00883 --cu 42 --grupo 1 --modelo 4 --cedula 0109876543 --instrumento Tar1 --nota 8.9 --dry-run
 ```
 
 Si todo se ve bien, ejecutá **sin `--dry-run`** (agregando `--commit`):

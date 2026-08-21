@@ -28,7 +28,7 @@ Modos de uso
 
 2. Subir UNA nota de prueba (siempre con --dry-run primero):
        python notasparciales_upload.py --dry-run single \
-           --cedula 0401230456 --instrumento Tar1 --nota 8.9 \
+           --cedula 0109876543 --instrumento Tar1 --nota 8.9 \
            --ano 2026 --pac 3 --tipo O ...
 
 3. Subir un CSV (formato: cedula,instrumento,nota[,observacion_codigo]):
