@@ -23,7 +23,7 @@ Modos de uso
 1. Verificar autenticación y descubrir contexto (curso/grupo/instrumentos):
        python notasparciales_upload.py probe \
            --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 \
-           --encargado ARODRIGUEZP --tutor 0401780367 \
+           --encargado ARODRIGUEZP --tutor 0401230456 \
            --asignatura 00883 --cu 42 --grupo 1 --modelo 4
 
 2. Subir UNA nota de prueba (siempre con --dry-run primero):
@@ -111,7 +111,7 @@ class Context:
     escuela: str       # "03"
     catedra: int       # 253
     encargado: str     # "ARODRIGUEZP"
-    tutor: str         # cédula del tutor: "0401780367"
+    tutor: str         # cédula del tutor: "0401230456"
     asignatura: str    # sigla: "00883"
     cu: str            # centro universitario: "42"
     grupo: int         # 1
@@ -2226,7 +2226,7 @@ def cmd_estado(args: argparse.Namespace) -> int:
         print("   todos los códigos; después quedan guardados. Ejemplo:")
         print()
         print(f"   {inv} probe --ano 2026 --pac 4 --escuela 03 --catedra 253 "
-              "--encargado ARODRIGUEZP --tutor 0401780367 --asignatura 03622 "
+              "--encargado ARODRIGUEZP --tutor 0401230456 --asignatura 03622 "
               "--cu 81 --grupo 1 --modelo 1")
     else:
         key, _ = cursos[0]
