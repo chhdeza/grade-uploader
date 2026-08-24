@@ -247,7 +247,7 @@ El archivo exportado debe tener estas columnas (Moodle las genera automáticamen
 |---------|---------|-------------|
 | `Nombre` | María | Nombre del estudiante |
 | `Apellido(s)` | Pérez Solano | Apellidos |
-| `Número de ID` | 0109876543 | **Cédula del estudiante** (debe coincidir con Notas Parciales) |
+| `Número de ID` | 9999900001 | **Cédula del estudiante** (debe coincidir con Notas Parciales) |
 | `Institución` | SAN JOSE (01) | Centro universitario. El número entre paréntesis es el código CU |
 
 **📊 Columnas de notas:**
@@ -258,9 +258,9 @@ El script detecta automáticamente las columnas que terminan en `(Real)` o `(Por
 
 | Nombre | Apellido(s) | Número de ID | Institución | Tarea 1 (Real) | Proyecto Final (Real) |
 |--------|-------------|-------------|-------------|-----------------|----------------------|
-| María | Pérez Solano | 0109876543 | SAN JOSE (01) | 89 | 95 |
-| Juan | Rodríguez Li | 0304560789 | DESAMPARADOS (42) | 75 | - |
-| Ana | Mora Castro | 0501230456 | SAN JOSE (01) | - | 80 |
+| María | Pérez Solano | 9999900001 | SAN JOSE (01) | 89 | 95 |
+| Juan | Rodríguez Li | 9999900003 | DESAMPARADOS (42) | 75 | - |
+| Ana | Mora Castro | 9999900002 | SAN JOSE (01) | - | 80 |
 
 > [!IMPORTANT]
 > 📌 **Sobre la columna "Número de ID":** este valor **debe ser la cédula del estudiante** y debe coincidir con la que aparece en Notas Parciales. Si en Moodle no está configurado (aparece vacío), el script no podrá mapear a ese estudiante.
@@ -294,9 +294,9 @@ El modo `csv` usa un archivo CSV simple con las notas **ya en escala 0–10**.
 
 ```csv
 cedula,instrumento,nota
-0109876543,Tar1,8.9
-0304560789,Tar1,7.5
-0501230456,Proy1,8.0
+9999900001,Tar1,8.9
+9999900003,Tar1,7.5
+9999900002,Proy1,8.0
 ```
 
 Columnas opcionales adicionales: `observacion_codigo`, `justificacion`.
@@ -405,7 +405,7 @@ python notasparciales_upload.py estado
 Verifica que tus credenciales funcionan y muestra los instrumentos de evaluación del modelo. **Corré esto una vez por curso** con todos los parámetros — si devuelve instrumentos y estudiantes reales, queda guardado para que los demás modos no te los vuelvan a pedir.
 
 ```bash
-python notasparciales_upload.py probe --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 0401230456 --asignatura 00883 --cu 42 --grupo 1 --modelo 4
+python notasparciales_upload.py probe --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 9999999999 --asignatura 00883 --cu 42 --grupo 1 --modelo 4
 ```
 
 **🖥️ Salida esperada:**
@@ -445,7 +445,7 @@ Ideal para **probar** que todo funciona antes de hacer una carga masiva.
 
 ```bash
 # Primero con --dry-run (NO escribe nada):
-python notasparciales_upload.py single --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 0401230456 --asignatura 00883 --cu 42 --grupo 1 --modelo 4 --cedula 0109876543 --instrumento Tar1 --nota 8.9 --dry-run
+python notasparciales_upload.py single --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 9999999999 --asignatura 00883 --cu 42 --grupo 1 --modelo 4 --cedula 9999900001 --instrumento Tar1 --nota 8.9 --dry-run
 ```
 
 Si todo se ve bien, ejecutá **sin `--dry-run`** (agregando `--commit`):
@@ -459,7 +459,7 @@ python notasparciales_upload.py single ... --commit
 ### 📄 Modo `csv` — Subir un CSV con muchas notas
 
 ```bash
-python notasparciales_upload.py csv --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 0401230456 --asignatura 00883 --cu 42 --grupo 1 --modelo 4 --upload-csv notas.csv --dry-run
+python notasparciales_upload.py csv --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 9999999999 --asignatura 00883 --cu 42 --grupo 1 --modelo 4 --upload-csv notas.csv --dry-run
 ```
 
 ---
@@ -477,7 +477,7 @@ python notasparciales_upload.py plan --ano 2026 --pac 3 --asignatura 00883 --xls
 La primera vez (o si el cache no tiene esta asignatura todavía), pasá todos los parámetros explícitos:
 
 ```bash
-python notasparciales_upload.py plan --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 0401230456 --asignatura 00883 --modelo 4 --xlsx calificaciones_moodle.xlsx --output notas_plan.csv
+python notasparciales_upload.py plan --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 9999999999 --asignatura 00883 --modelo 4 --xlsx calificaciones_moodle.xlsx --output notas_plan.csv
 ```
 
 **¿Cómo se resuelve el CU → grupo si no paso `--cu-grupo`?**
@@ -577,7 +577,7 @@ python notasparciales_upload.py estado
 
 # 1. Verificar autenticación (con TODOS los parámetros la primera vez —
 #    si sale bien, queda cacheado para los pasos 2-5)
-python notasparciales_upload.py probe --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 0401230456 --asignatura 00883 --cu 42 --grupo 1 --modelo 4
+python notasparciales_upload.py probe --ano 2026 --pac 3 --tipo O --escuela 03 --catedra 253 --encargado ARODRIGUEZP --tutor 9999999999 --asignatura 00883 --cu 42 --grupo 1 --modelo 4
 
 # 2. Generar plan desde xlsx (CU-grupo se autodetecta solo)
 python notasparciales_upload.py plan --ano 2026 --pac 3 --asignatura 00883 --xlsx calificaciones_moodle.xlsx
@@ -610,7 +610,7 @@ Estos parámetros identifican **exactamente** a qué grupo y modelo de evaluaci�
 │  Escuela: [03 - Ciencias Exactas ▼]    ← --escuela 03           │
 │  Cátedra: [253 - Informática ▼]       ← --catedra 253           │
 │  Encargado: [ARODRIGUEZP ▼]           ← --encargado ARODRIGUEZP │
-│  Tutor: [0401230456 ▼]                ← --tutor 0401230456      │
+│  Tutor: [9999999999 ▼]                ← --tutor 9999999999      │
 │                                                                  │
 │  Asignatura: [00883 ▼]                ← --asignatura 00883      │
 │  Centro Univ: [42 ▼]                  ← --cu 42                 │
@@ -628,7 +628,7 @@ Estos parámetros identifican **exactamente** a qué grupo y modelo de evaluaci�
 | `--escuela` | texto | ✅¹ | Código de escuela | `03` |
 | `--catedra` | entero | ✅¹ | ID numérico de cátedra | `253` |
 | `--encargado` | texto | ✅¹ | Username del encargado de cátedra | `ARODRIGUEZP` |
-| `--tutor` | texto | ✅¹ | Cédula del tutor | `0401230456` |
+| `--tutor` | texto | ✅¹ | Cédula del tutor | `9999999999` |
 | `--modelo` | entero | ✅¹ | Modelo de evaluación | `4` |
 | `--cu` | texto | ✅² | Código del centro universitario | `42` |
 | `--grupo` | entero | ✅² | Número de grupo | `1` |
