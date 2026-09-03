@@ -4,4 +4,4 @@
 # nuevas dentro de las familias ya seleccionadas y poner el CI en rojo sin que
 # nadie haya tocado el guion. Dependabot mueve este pin y abre un PR que el
 # propio CI verifica antes de que nadie lo mergee.
-ruff==0.16.4
+ruff==0.16.5
